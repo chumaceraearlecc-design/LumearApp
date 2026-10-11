@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter_application_1/data/hardcoded_rider.dart';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -40,21 +42,21 @@ class _PersonalInformationScreenState extends State<PersonalInformationScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: RiderProfile.name);
-    _phoneController = TextEditingController(text: RiderProfile.phone);
-    _emailController = TextEditingController(text: RiderProfile.email);
-    _birthdayController = TextEditingController(text: RiderProfile.birthday);
-    _ageController = TextEditingController(
-      text: RiderProfile.age?.toString() ?? '',
-    );
-    _regionController = TextEditingController(text: RiderProfile.region);
-    _provinceController = TextEditingController(text: RiderProfile.province);
+    _nameController = TextEditingController(text: HardcodedRider.fullName);
+    _phoneController = TextEditingController(text: HardcodedRider.phone);
+    _emailController = TextEditingController(text: HardcodedRider.email);
+    _birthdayController = TextEditingController(text: HardcodedRider.birthday);
+    _ageController = TextEditingController(text: HardcodedRider.age.toString());
+    _regionController = TextEditingController(text: HardcodedRider.region);
+    _provinceController = TextEditingController(text: HardcodedRider.province);
     _municipalityController = TextEditingController(
-      text: RiderProfile.municipality,
+      text: HardcodedRider.municipality,
     );
-    _barangayController = TextEditingController(text: RiderProfile.barangay);
-    _streetController = TextEditingController(text: RiderProfile.street);
-    _houseUnitController = TextEditingController(text: RiderProfile.houseUnit);
+    _barangayController = TextEditingController(text: HardcodedRider.barangay);
+    _streetController = TextEditingController(text: HardcodedRider.street);
+    _houseUnitController = TextEditingController(
+      text: HardcodedRider.houseUnit,
+    );
   }
 
   @override

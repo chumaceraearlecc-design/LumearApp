@@ -3,7 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/models/parcel_store.dart';
+import 'package:flutter_application_1/services/rider_earnings_service.dart';
 import 'package:flutter_application_1/screens/delivery_details_screen.dart';
+
+import 'seller_pickup_details_screen.dart';
 
 class Parcel {
   final String parcelNumber;
@@ -96,6 +99,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     borderRadius: BorderRadius.circular(radiusLg),
     border: Border.all(color: darkMaroon.withValues(alpha: 0.06)),
     boxShadow: shadowSoft,
+  );
+
+  static const double _tabsHeight = 66;
+  static const EdgeInsets _listPadding = EdgeInsets.only(
+    top: _tabsHeight + 4,
+    bottom: 120,
   );
 
   int _selectedTab = 0;
@@ -292,8 +301,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     return Scaffold(
       backgroundColor: cream,
       body: SafeArea(
+        bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 110),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -311,70 +321,21 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                 'Manage pickups, deliveries, returns, and proof of delivery.',
                 style: TextStyle(fontSize: 12.5, color: textMuted),
               ),
-              const SizedBox(height: 18),
-
-              // Five tabs are horizontally scrollable so they remain readable.
-              SizedBox(
-                height: 42,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _tabs.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final bool selected = _selectedTab == index;
-                    final tab = _tabs[index];
-
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedTab = index;
-                        });
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: selected ? darkMaroon : surface,
-                          borderRadius: BorderRadius.circular(13),
-                          boxShadow: selected
-                              ? [
-                                  BoxShadow(
-                                    color: darkMaroon.withValues(alpha: 0.22),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ]
-                              : shadowSoft,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              tab.icon,
-                              size: 15,
-                              color: selected ? Colors.white : brownBeige,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              tab.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: selected ? Colors.white : darkMaroon,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+              const SizedBox(height: 14),
+              Expanded(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned.fill(child: _buildSelectedTab()),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _buildFloatingTabs(),
+                    ),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 18),
-              Expanded(child: _buildSelectedTab()),
             ],
           ),
         ),
@@ -382,10 +343,82 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     );
   }
 
+  Widget _buildFloatingTabs() {
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: darkMaroon,
+        borderRadius: BorderRadius.circular(radiusLg),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: darkMaroon.withValues(alpha: 0.32),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 5,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        itemCount: _tabs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          final bool selected = _selectedTab == index;
+          final tab = _tabs[index];
+
+          return GestureDetector(
+            onTap: () => setState(() => _selectedTab = index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? cream : Colors.transparent,
+                borderRadius: BorderRadius.circular(radiusSm),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    tab.icon,
+                    size: 15,
+                    color: selected
+                        ? darkMaroon
+                        : Colors.white.withValues(alpha: 0.85),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    tab.label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: selected
+                          ? darkMaroon
+                          : Colors.white.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildSelectedTab() {
     switch (_selectedTab) {
       case 0:
-        return _buildParcelList(_pickupParcels, type: 'pickup');
+        return _buildPickupTab();
       case 1:
         return _buildParcelList(_ongoingParcels, type: 'ongoing');
       case 2:
@@ -399,6 +432,156 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     }
   }
 
+  Widget _buildPickupTab() {
+    return ValueListenableBuilder<List<SellerPickupRequest>>(
+      valueListenable: ParcelStore.sellerPickups,
+      builder: (context, sellerPickups, _) {
+        if (sellerPickups.isEmpty && _pickupParcels.isEmpty) {
+          return _emptyState('pickup');
+        }
+
+        return ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: _listPadding,
+          children: [
+            if (sellerPickups.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'SELLER PICKUP TASKS',
+                  style: TextStyle(
+                    color: darkMaroon,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              ...sellerPickups.map(_sellerPickupCard),
+              const SizedBox(height: 10),
+            ],
+            if (_pickupParcels.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text(
+                  'PARCEL PICKUPS',
+                  style: TextStyle(
+                    color: darkMaroon,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              ..._pickupParcels.map(
+                (parcel) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _parcelCard(parcel: parcel, type: 'pickup'),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _sellerPickupCard(SellerPickupRequest pickup) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: lightBeige.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(Icons.storefront_outlined, color: darkMaroon),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'SELLER PICKUP',
+                  style: TextStyle(
+                    color: maroon,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              _statusChip(pickup.status.label),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            pickup.requestId,
+            style: const TextStyle(
+              color: darkMaroon,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            pickup.sellerName,
+            style: const TextStyle(
+              color: darkMaroon,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _compactInfo(Icons.location_on_rounded, pickup.pickupAddress),
+          const SizedBox(height: 9),
+          if ((pickup.sellerPhone ?? '').trim().isNotEmpty) ...[
+            _compactInfo(Icons.phone_outlined, pickup.sellerPhone!),
+            const SizedBox(height: 9),
+          ],
+          _compactInfo(
+            Icons.inventory_2_outlined,
+            '${pickup.expectedParcels.length} parcels',
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        SellerPickupDetailsScreen(requestId: pickup.requestId),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: Text(
+                pickup.status == SellerPickupStatus.assigned
+                    ? 'View Details / Start Pickup'
+                    : 'View Pickup Details',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: darkMaroon,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusSm),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildParcelList(List<Parcel> parcels, {required String type}) {
     if (parcels.isEmpty) {
       return _emptyState(type);
@@ -406,6 +589,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
 
     return ListView.separated(
       physics: const BouncingScrollPhysics(),
+      padding: _listPadding,
       itemCount: parcels.length,
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
@@ -441,42 +625,45 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         icon = Icons.assignment_return_outlined;
     }
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 84,
-            height: 84,
-            decoration: BoxDecoration(
-              color: lightBeige.withValues(alpha: 0.4),
-              shape: BoxShape.circle,
+    return Padding(
+      padding: const EdgeInsets.only(top: _tabsHeight, bottom: 100),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: lightBeige.withValues(alpha: 0.4),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 36, color: darkMaroon),
             ),
-            child: Icon(icon, size: 36, color: darkMaroon),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: darkMaroon,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 34),
-            child: Text(
-              message,
-              textAlign: TextAlign.center,
+            const SizedBox(height: 18),
+            Text(
+              title,
               style: const TextStyle(
-                fontSize: 12.5,
-                color: textMuted,
-                height: 1.4,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: darkMaroon,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 34),
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: textMuted,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -842,129 +1029,132 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       return _sameDate(deliveredAt, _selectedPodDate);
     }).toList()..sort((a, b) => b.deliveredAt!.compareTo(a.deliveredAt!));
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(radiusMd),
-          onTap: _pickPodDate,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: cardDecoration,
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: lightBeige.withValues(alpha: 0.45),
-                    borderRadius: BorderRadius.circular(14),
+    return Padding(
+      padding: const EdgeInsets.only(top: _tabsHeight + 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(radiusMd),
+            onTap: _pickPodDate,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: cardDecoration,
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: lightBeige.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.calendar_month_rounded,
+                      color: darkMaroon,
+                      size: 21,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.calendar_month_rounded,
-                    color: darkMaroon,
-                    size: 21,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Select Delivery Date',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: textMuted,
-                          fontWeight: FontWeight.w600,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Select Delivery Date',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: textMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _formatDate(_selectedPodDate),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: darkMaroon,
+                        const SizedBox(height: 3),
+                        Text(
+                          _formatDate(_selectedPodDate),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: darkMaroon,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: cream,
-                    borderRadius: BorderRadius.circular(9),
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: cream,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: darkMaroon,
+                      size: 20,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: darkMaroon,
-                    size: 20,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
 
-        const SizedBox(height: 18),
+          const SizedBox(height: 18),
 
-        Text(
-          '${filtered.length} ${filtered.length == 1 ? 'delivery' : 'deliveries'} on ${_formatDate(_selectedPodDate)}',
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            color: darkMaroon,
-            letterSpacing: -0.2,
+          Text(
+            '${filtered.length} ${filtered.length == 1 ? 'delivery' : 'deliveries'} on ${_formatDate(_selectedPodDate)}',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: darkMaroon,
+              letterSpacing: -0.2,
+            ),
           ),
-        ),
 
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
 
-        Expanded(
-          child: filtered.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: lightBeige.withValues(alpha: 0.4),
-                          shape: BoxShape.circle,
+          Expanded(
+            child: filtered.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: lightBeige.withValues(alpha: 0.4),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.photo_camera_outlined,
+                            size: 30,
+                            color: darkMaroon,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.photo_camera_outlined,
-                          size: 30,
-                          color: darkMaroon,
+                        const SizedBox(height: 14),
+                        const Text(
+                          'No proof of delivery records\nfor this date.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: textMuted,
+                            fontSize: 12.5,
+                            height: 1.4,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'No proof of delivery records\nfor this date.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: textMuted,
-                          fontSize: 12.5,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      return _podHistoryCard(filtered[index]);
+                    },
                   ),
-                )
-              : ListView.separated(
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    return _podHistoryCard(filtered[index]);
-                  },
-                ),
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1318,6 +1508,28 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     if (scannedParcel != null &&
         scannedParcel.trackingNumber == parcel.trackingNumber) {
       ParcelStore.updateStatus(status);
+    }
+
+    if (status == 'Delivered') {
+      final ParcelData completedParcel = ParcelData(
+        parcelNumber: parcel.parcelNumber,
+        trackingNumber: parcel.trackingNumber,
+        hub: parcel.hub,
+        recipient: parcel.recipient,
+        phone: parcel.phone,
+        address: parcel.address,
+        parcelType: parcel.parcelType,
+        paymentMethod: parcel.paymentMethod,
+        codAmount: parcel.codAmount,
+        riderFee: parcel.riderFee,
+        distance: parcel.distance,
+        customerLatitude: parcel.customerLatitude,
+        customerLongitude: parcel.customerLongitude,
+        qrValue: parcel.trackingNumber,
+        status: 'Delivered',
+      );
+      ParcelStore.awardSuccessfulDelivery(completedParcel);
+      RiderEarningsService.instance.recordSuccessfulDelivery(completedParcel);
     }
   }
 

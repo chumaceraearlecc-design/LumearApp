@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'admin_payout_verification_screen.dart';
+
 class AdminHomeScreen extends StatelessWidget {
   const AdminHomeScreen({super.key});
 
@@ -25,6 +27,67 @@ class AdminHomeScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 30),
           children: [
             _welcomeCard(),
+
+            const SizedBox(height: 14),
+
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: cream,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: const Icon(
+                      Icons.monitor_heart_outlined,
+                      color: darkMaroon,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Payout Monitoring',
+                          style: TextStyle(
+                            color: darkMaroon,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'View payout requests and payment status',
+                          style: TextStyle(color: brownBeige, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Open payout monitoring',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminPayoutVerificationScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: darkMaroon,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 24),
 

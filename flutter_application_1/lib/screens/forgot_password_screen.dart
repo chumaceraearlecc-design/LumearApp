@@ -32,9 +32,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   // ============================================================
 
   bool _isLoading = false;
-  bool _useEmail = true;
 
-  // 0 = Enter Email / Phone
+  // 0 = Enter Email
   // 1 = OTP Verification
   // 2 = Create New Password
   // 3 = Password Changed
@@ -54,8 +53,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   // ============================================================
 
   final TextEditingController _emailController = TextEditingController();
-
-  final TextEditingController _phoneController = TextEditingController();
 
   final TextEditingController _newPasswordController = TextEditingController();
 
@@ -78,7 +75,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void dispose() {
     _emailController.dispose();
-    _phoneController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
 
@@ -193,12 +189,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return regex.hasMatch(email);
   }
 
-  bool _isValidPhone(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-
-    return digits.length == 10 && digits.startsWith('9');
-  }
-
   // ============================================================
   // RESET OTP
   // ============================================================
@@ -223,42 +213,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _sendVerificationCode() async {
     FocusScope.of(context).unfocus();
 
-    if (_useEmail) {
-      final email = _emailController.text.trim();
+    final email = _emailController.text.trim();
 
-      if (email.isEmpty) {
-        _showTopNotification(
-          'Please enter your registered email.',
-          icon: Icons.email_outlined,
-        );
-        return;
-      }
+    if (email.isEmpty) {
+      _showTopNotification(
+        'Please enter your registered email.',
+        icon: Icons.email_outlined,
+      );
+      return;
+    }
 
-      if (!_isValidEmail(email)) {
-        _showTopNotification(
-          'Please enter a valid email address.',
-          icon: Icons.warning_amber_rounded,
-        );
-        return;
-      }
-    } else {
-      final phone = _phoneController.text.trim();
-
-      if (phone.isEmpty) {
-        _showTopNotification(
-          'Please enter your registered phone number.',
-          icon: Icons.phone_outlined,
-        );
-        return;
-      }
-
-      if (!_isValidPhone(phone)) {
-        _showTopNotification(
-          'Enter a valid PH mobile number.',
-          icon: Icons.warning_amber_rounded,
-        );
-        return;
-      }
+    if (!_isValidEmail(email)) {
+      _showTopNotification(
+        'Please enter a valid email address.',
+        icon: Icons.warning_amber_rounded,
+      );
+      return;
     }
 
     setState(() {
@@ -279,10 +249,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
 
     _showTopNotification(
-      _useEmail
-          ? 'Verification code sent to your email.'
-          : 'Verification code sent to your phone.',
-      icon: _useEmail ? Icons.mark_email_read_outlined : Icons.sms_outlined,
+      'Verification code sent to your email.',
+      icon: Icons.mark_email_read_outlined,
     );
 
     Future.delayed(const Duration(milliseconds: 300), () {
@@ -314,10 +282,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
 
     _showTopNotification(
-      _useEmail
-          ? 'A new code was sent to your email.'
-          : 'A new code was sent to your phone.',
-      icon: _useEmail ? Icons.email_outlined : Icons.sms_outlined,
+      'A new code was sent to your email.',
+      icon: Icons.email_outlined,
     );
 
     Future.delayed(const Duration(milliseconds: 250), () {
@@ -501,21 +467,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   // ============================================================
-  // SWITCH EMAIL / PHONE
-  // ============================================================
-
-  void _switchMethod(bool useEmail) {
-    if (_isLoading) return;
-
-    setState(() {
-      _useEmail = useEmail;
-      _step = 0;
-      _resetOtpState();
-      _clearOtp();
-    });
-  }
-
-  // ============================================================
   // INPUT DECORATION
   // ============================================================
 
@@ -543,135 +494,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: const BorderSide(color: maroon, width: 2),
-      ),
-    );
-  }
-
-  // ============================================================
-  // METHOD SELECTOR
-  // ============================================================
-
-  Widget _buildMethodSelector() {
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: lightBeige.withValues(alpha: 0.40),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _methodButton(
-              title: 'Email',
-              icon: Icons.email_outlined,
-              selected: _useEmail,
-              onTap: () {
-                _switchMethod(true);
-              },
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _methodButton(
-              title: 'Phone',
-              icon: Icons.phone_outlined,
-              selected: !_useEmail,
-              onTap: () {
-                _switchMethod(false);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _methodButton({
-    required String title,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        height: 48,
-        decoration: BoxDecoration(
-          color: selected ? darkMaroon : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 19, color: selected ? Colors.white : darkMaroon),
-            const SizedBox(width: 7),
-            Text(
-              title,
-              style: TextStyle(
-                color: selected ? Colors.white : darkMaroon,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // PHONE FIELD
-  // ============================================================
-
-  Widget _buildPhoneField() {
-    return Container(
-      height: 58,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 15),
-          const Icon(Icons.phone_outlined, color: maroon, size: 22),
-          const SizedBox(width: 12),
-          const Text(
-            '+63',
-            style: TextStyle(
-              color: darkMaroon,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            width: 1,
-            height: 25,
-            color: brownBeige.withValues(alpha: 0.4),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(10),
-              ],
-              style: const TextStyle(color: darkMaroon, fontSize: 14),
-              decoration: const InputDecoration(
-                hintText: '9123456789',
-                hintStyle: TextStyle(color: brownBeige, fontSize: 13),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-        ],
       ),
     );
   }
@@ -832,19 +654,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   // ============================================================
-  // STEP 0 - EMAIL / PHONE
+  // STEP 0 - EMAIL
   // ============================================================
 
   Widget _buildRequestStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildMethodSelector(),
-
-        const SizedBox(height: 24),
-
-        Text(
-          _useEmail ? 'Email Address' : 'Phone Number',
+        const Text(
+          'Email Address',
           style: const TextStyle(
             color: darkMaroon,
             fontWeight: FontWeight.w600,
@@ -854,24 +672,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
         const SizedBox(height: 8),
 
-        if (_useEmail)
-          TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            decoration: _inputDecoration(
-              hint: 'Enter your registered email',
-              icon: Icons.email_outlined,
-            ),
-          )
-        else
-          _buildPhoneField(),
+        TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: _inputDecoration(
+            hint: 'Enter your registered email',
+            icon: Icons.email_outlined,
+          ),
+        ),
 
         const SizedBox(height: 12),
 
-        Text(
-          _useEmail
-              ? 'We will send a 4-digit verification code to your registered email.'
-              : 'We will send a 4-digit verification code to your registered phone number.',
+        const Text(
+          'We will send a 4-digit verification code to your registered email.',
           style: const TextStyle(color: brownBeige, fontSize: 11, height: 1.4),
         ),
 
@@ -914,17 +727,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   // ============================================================
 
   Widget _buildOtpStep() {
-    final destinationText = _useEmail
-        ? _emailController.text.trim()
-        : '+63${_phoneController.text.trim()}';
+    final destinationText = _emailController.text.trim();
 
     return Column(
       children: [
-        Icon(
-          _useEmail ? Icons.mark_email_read_outlined : Icons.sms_outlined,
-          color: darkMaroon,
-          size: 65,
-        ),
+        Icon(Icons.mark_email_read_outlined, color: darkMaroon, size: 65),
 
         const SizedBox(height: 18),
 
@@ -940,9 +747,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         const SizedBox(height: 8),
 
         Text(
-          _useEmail
-              ? 'We sent a 4-digit verification code to\n$destinationText'
-              : 'We sent a 4-digit verification code to\n$destinationText',
+          'We sent a 4-digit verification code to\n$destinationText',
           textAlign: TextAlign.center,
           style: const TextStyle(color: brownBeige, fontSize: 13, height: 1.5),
         ),
@@ -967,10 +772,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         if (!_otpChecking && !_otpVerified)
           TextButton(
             onPressed: _isLoading ? null : _resendCode,
-            child: Text(
-              _useEmail
-                  ? "Didn't receive the email code? Resend"
-                  : "Didn't receive the SMS code? Resend",
+            child: const Text(
+              "Didn't receive the email code? Resend",
               style: const TextStyle(
                 color: darkMaroon,
                 fontWeight: FontWeight.bold,
@@ -1040,7 +843,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             },
             icon: const Icon(Icons.edit_outlined, color: darkMaroon, size: 18),
             label: Text(
-              _useEmail ? 'Change email address' : 'Change phone number',
+              'Change email address',
               style: const TextStyle(
                 color: darkMaroon,
                 fontWeight: FontWeight.w600,

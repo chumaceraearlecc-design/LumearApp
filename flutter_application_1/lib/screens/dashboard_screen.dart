@@ -9,6 +9,7 @@ import 'package:flutter_application_1/models/parcel_store.dart';
 import 'package:flutter_application_1/screens/delivers_screen.dart';
 
 import 'package:flutter_application_1/screens/delivery_details_screen.dart';
+import 'package:flutter_application_1/screens/earnings_screen.dart';
 import 'package:flutter_application_1/screens/help_support_screen.dart';
 
 import 'profile_screen.dart';
@@ -56,9 +57,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   static List<BoxShadow> get shadowFloating => [
     BoxShadow(
-      color: darkMaroon.withValues(alpha: 0.28),
-      blurRadius: 22,
-      offset: const Offset(0, 10),
+      color: darkMaroon.withValues(alpha: 0.36),
+      blurRadius: 26,
+      offset: const Offset(0, 12),
+    ),
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.12),
+      blurRadius: 5,
+      offset: const Offset(0, 3),
     ),
   ];
 
@@ -83,6 +89,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   bool _isStartingDelivery = false;
   bool _isRefreshingHome = false;
+  bool _isAvailable = true;
 
   int _unreadNotifications = 0;
 
@@ -222,6 +229,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
 
       case 3:
+        return const KeyedSubtree(
+          key: ValueKey('earnings'),
+          child: EarningsScreen(),
+        );
+
+      case 4:
         return const KeyedSubtree(
           key: ValueKey('profile'),
           child: ProfileScreen(),
@@ -883,6 +896,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       decoration: BoxDecoration(
         color: darkMaroon,
         borderRadius: BorderRadius.circular(radiusXl),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
         boxShadow: shadowFloating,
       ),
       child: Row(
@@ -905,6 +919,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           _bottomNavItem(
             index: 3,
+            icon: Icons.account_balance_wallet_outlined,
+            activeIcon: Icons.account_balance_wallet_rounded,
+          ),
+          _bottomNavItem(
+            index: 4,
             icon: Icons.person_outline,
             activeIcon: Icons.person_rounded,
           ),
@@ -1079,20 +1098,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: surface,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: shadowSoft,
-                              ),
-                              child: IconButton(
-                                onPressed: _showNotifications,
-                                icon: const Icon(
-                                  Icons.notifications_outlined,
-                                  color: darkMaroon,
-                                  size: 22,
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _isAvailable = !_isAvailable;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    height: 44,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _isAvailable
+                                          ? success.withValues(alpha: 0.10)
+                                          : textMuted.withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.circle,
+                                          size: 8,
+                                          color: _isAvailable
+                                              ? success
+                                              : textMuted,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          _isAvailable ? 'Online' : 'Offline',
+                                          style: TextStyle(
+                                            color: _isAvailable
+                                                ? success
+                                                : textMuted,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: surface,
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: shadowSoft,
+                                  ),
+                                  child: IconButton(
+                                    onPressed: _showNotifications,
+                                    icon: const Icon(
+                                      Icons.notifications_outlined,
+                                      color: darkMaroon,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
 
                             if (_unreadNotifications > 0)

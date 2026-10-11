@@ -159,15 +159,6 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
       _pendingMimeType = null;
     });
 
-    // Normal text-only Easter eggs.
-    if (!hasAttachment) {
-      final bool handled = await _handleEasterEgg(text);
-
-      if (handled) {
-        return;
-      }
-    }
-
     await _sendToOpenRouter(
       riderMessage: text,
       attachmentPath: attachmentPath,
@@ -175,53 +166,6 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
       attachmentName: attachmentName,
       mimeType: mimeType,
     );
-  }
-
-  // ============================================================
-  // EASTER EGGS
-  // ============================================================
-
-  Future<bool> _handleEasterEgg(String message) async {
-    final String normalized = message.toLowerCase().trim().replaceAll(
-      RegExp(r'[?.!,]+$'),
-      '',
-    );
-
-    String? reply;
-
-    switch (normalized) {
-      case 'who is patrick':
-      case 'sino si patrick':
-        reply =
-            "Patrick is someone special "
-            "to Lumear's creator.";
-        break;
-
-      case 'who is earl':
-      case 'sino si earl':
-        reply =
-            'Earl is one of the creators '
-            'behind Lumear.';
-        break;
-
-      case 'who created you':
-      case 'who made you':
-      case 'sino gumawa sayo':
-      case 'sino gumawa sa iyo':
-        reply =
-            'I am Lumear AI Support, created '
-            'for the Lumear Rider App.';
-        break;
-
-      default:
-        return false;
-    }
-
-    _addRiderMessage(message, sendToGemini: false);
-
-    await _addLocalBotMessage(reply);
-
-    return true;
   }
 
   // ============================================================

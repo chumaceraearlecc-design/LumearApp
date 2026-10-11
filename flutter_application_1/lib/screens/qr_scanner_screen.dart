@@ -6,8 +6,17 @@ import 'package:flutter_application_1/models/parcel_store.dart';
 
 class QrScannerScreen extends StatefulWidget {
   final Future<void> Function(String qrValue)? onParcelScanned;
+  final Future<String?> Function(String qrValue)? onQrScanned;
+  final bool createParcel;
+  final String scanPurpose;
 
-  const QrScannerScreen({super.key, this.onParcelScanned});
+  const QrScannerScreen({
+    super.key,
+    this.onParcelScanned,
+    this.onQrScanned,
+    this.createParcel = true,
+    this.scanPurpose = 'payout',
+  });
 
   @override
   State<QrScannerScreen> createState() => _QrScannerScreenState();
@@ -169,33 +178,41 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
       await _scannerController.stop();
 
-      // ========================================================
-      // CREATE PARCEL
-      // ========================================================
+      String successMessage;
+      IconData successIcon;
 
-      final ParcelData parcel = ParcelStore.createParcelFromQr(qrValue);
+      if (widget.createParcel) {
+        final ParcelData parcel = ParcelStore.createParcelFromQr(qrValue);
+        debugPrint('QR Scanner created ${parcel.trackingNumber}');
+        await _playScanSuccessSound();
 
-      debugPrint('QR Scanner created ${parcel.trackingNumber}');
+        if (widget.onParcelScanned != null) {
+          await widget.onParcelScanned!(qrValue);
+        }
 
-      // ========================================================
-      // SUCCESS SOUND
-      // ========================================================
+        successMessage = '${parcel.parcelNumber} added to Pickups.';
+        successIcon = Icons.inventory_2_rounded;
+      } else {
+        final callback = widget.onQrScanned;
+        if (callback == null) {
+          throw StateError('A QR scan callback is required in generic mode.');
+        }
 
-      await _playScanSuccessSound();
+        final String? rejectionMessage = await callback(qrValue);
+        if (rejectionMessage != null) {
+          if (mounted) {
+            _showTopMessage(
+              rejectionMessage,
+              icon: Icons.error_outline_rounded,
+              color: Colors.red,
+            );
+          }
+          return;
+        }
 
-      // ========================================================
-      // OPTIONAL CALLBACK
-      // ========================================================
-      //
-      // IMPORTANT:
-      // Do NOT call ParcelStore.createParcelFromQr()
-      // again inside the parent callback.
-      //
-      // The parcel has already been created above.
-      // ========================================================
-
-      if (widget.onParcelScanned != null) {
-        await widget.onParcelScanned!(qrValue);
+        await _playScanSuccessSound();
+        successMessage = '${widget.scanPurpose} QR scanned.';
+        successIcon = Icons.qr_code_scanner_rounded;
       }
 
       if (!mounted) {
@@ -206,11 +223,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       // TOP SUCCESS NOTIFICATION
       // ========================================================
 
-      _showTopMessage(
-        '${parcel.parcelNumber} added to Pickups.',
-        icon: Icons.inventory_2_rounded,
-        color: success,
-      );
+      _showTopMessage(successMessage, icon: successIcon, color: success);
     } catch (error) {
       debugPrint('QR Scanner Error: $error');
 
@@ -396,208 +409,239 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 105),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ==================================================
-            // TITLE
-            // ==================================================
+    return ColoredBox(
+      color: cream,
+      child: SafeArea(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 105),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ==================================================
+              // TITLE
+              // ==================================================
 
-            const Text(
-              'Scan Parcel QR',
-              style: TextStyle(
-                color: darkMaroon,
-                fontSize: 27,
-                fontWeight: FontWeight.bold,
+              Text(
+                widget.createParcel
+                    ? 'Scan Parcel QR'
+                    : 'Scan ${_titleCase(widget.scanPurpose)} QR',
+                style: const TextStyle(
+                  color: darkMaroon,
+                  fontSize: 27,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 5),
+              const SizedBox(height: 5),
 
-            const Text(
-              'Position the parcel QR code inside the frame.',
-              style: TextStyle(color: brownBeige, fontSize: 13),
-            ),
-
-            const SizedBox(height: 20),
-
-            // ==================================================
-            // SCANNER CARD
-            // ==================================================
-            Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: darkMaroon,
-                borderRadius: BorderRadius.circular(25),
+              Text(
+                widget.createParcel
+                    ? 'Position the parcel QR code inside the frame.'
+                    : 'Position the ${widget.scanPurpose} QR code inside the frame.',
+                style: const TextStyle(color: brownBeige, fontSize: 13),
               ),
-              child: Column(
-                children: [
-                  AspectRatio(
-                    aspectRatio: 0.90,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // ======================================
-                        // CAMERA
-                        // ======================================
 
-                        MobileScanner(
-                          controller: _scannerController,
-                          onDetect: _onDetect,
-                          fit: BoxFit.cover,
-                        ),
+              const SizedBox(height: 20),
 
-                        // ======================================
-                        // DARK OVERLAY
-                        // ======================================
-                        IgnorePointer(
-                          child: CustomPaint(painter: ScannerOverlayPainter()),
-                        ),
+              // ==================================================
+              // SCANNER CARD
+              // ==================================================
+              Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: cream,
+                  borderRadius: BorderRadius.circular(25),
+                  border: Border.all(color: darkMaroon.withValues(alpha: 0.10)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: darkMaroon.withValues(alpha: 0.10),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 0.90,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // ======================================
+                          // CAMERA
+                          // ======================================
 
-                        // ======================================
-                        // QR FRAME
-                        // ======================================
-                        Center(
-                          child: Container(
-                            width: 235,
-                            height: 235,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              border: Border.all(color: Colors.white, width: 3),
-                            ),
-                            child: const Stack(
-                              children: [
-                                _ScannerCorner(alignment: Alignment.topLeft),
-                                _ScannerCorner(alignment: Alignment.topRight),
-                                _ScannerCorner(alignment: Alignment.bottomLeft),
-                                _ScannerCorner(
-                                  alignment: Alignment.bottomRight,
-                                ),
-                              ],
+                          MobileScanner(
+                            controller: _scannerController,
+                            onDetect: _onDetect,
+                            fit: BoxFit.cover,
+                          ),
+
+                          // ======================================
+                          // DARK OVERLAY
+                          // ======================================
+                          IgnorePointer(
+                            child: CustomPaint(
+                              painter: ScannerOverlayPainter(),
                             ),
                           ),
-                        ),
 
-                        // ======================================
-                        // PROCESSING
-                        // ======================================
-                        if (_processing)
-                          Container(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            child: const Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                          // ======================================
+                          // QR FRAME
+                          // ======================================
+                          Center(
+                            child: SizedBox(
+                              width: 235,
+                              height: 235,
+                              child: const Stack(
                                 children: [
-                                  CircularProgressIndicator(
-                                    color: Colors.white,
+                                  _ScannerCorner(alignment: Alignment.topLeft),
+                                  _ScannerCorner(alignment: Alignment.topRight),
+                                  _ScannerCorner(
+                                    alignment: Alignment.bottomLeft,
                                   ),
-
-                                  SizedBox(height: 15),
-
-                                  Text(
-                                    'Processing parcel...',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  _ScannerCorner(
+                                    alignment: Alignment.bottomRight,
                                   ),
                                 ],
                               ),
                             ),
                           ),
-                      ],
-                    ),
-                  ),
 
-                  // ==================================================
-                  // FLASH BUTTON
-                  // ==================================================
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    child: ValueListenableBuilder<MobileScannerState>(
-                      valueListenable: _scannerController,
-                      builder: (context, state, child) {
-                        final bool torchOn = state.torchState == TorchState.on;
+                          // ======================================
+                          // PROCESSING
+                          // ======================================
+                          if (_processing)
+                            Container(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const CircularProgressIndicator(
+                                      color: Colors.white,
+                                    ),
 
-                        return ElevatedButton.icon(
-                          onPressed: _processing
-                              ? null
-                              : () async {
-                                  await _scannerController.toggleTorch();
-                                },
-                          icon: Icon(
-                            torchOn
-                                ? Icons.flash_on_rounded
-                                : Icons.flash_off_rounded,
-                          ),
-                          label: Text(
-                            torchOn ? 'Turn Flash Off' : 'Turn Flash On',
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: cream,
-                            foregroundColor: darkMaroon,
-                            disabledBackgroundColor: cream.withValues(
-                              alpha: 0.5,
+                                    const SizedBox(height: 15),
+
+                                    Text(
+                                      widget.createParcel
+                                          ? 'Processing parcel...'
+                                          : 'Checking ${widget.scanPurpose}...',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            disabledForegroundColor: darkMaroon.withValues(
-                              alpha: 0.5,
-                            ),
-                            elevation: 0,
-                            minimumSize: const Size(double.infinity, 48),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ==================================================
-            // INFO CARD
-            // ==================================================
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.65),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline_rounded, color: darkMaroon, size: 20),
-
-                  SizedBox(width: 10),
-
-                  Expanded(
-                    child: Text(
-                      'After scanning, the parcel will be processed and added to your Pickups.',
-                      style: TextStyle(
-                        color: brownBeige,
-                        fontSize: 12,
-                        height: 1.4,
+                        ],
                       ),
                     ),
-                  ),
-                ],
+
+                    // ==================================================
+                    // FLASH BUTTON
+                    // ==================================================
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      child: ValueListenableBuilder<MobileScannerState>(
+                        valueListenable: _scannerController,
+                        builder: (context, state, child) {
+                          final bool torchOn =
+                              state.torchState == TorchState.on;
+
+                          return ElevatedButton.icon(
+                            onPressed: _processing
+                                ? null
+                                : () async {
+                                    await _scannerController.toggleTorch();
+                                  },
+                            icon: Icon(
+                              torchOn
+                                  ? Icons.flash_on_rounded
+                                  : Icons.flash_off_rounded,
+                            ),
+                            label: Text(
+                              torchOn ? 'Turn Flash Off' : 'Turn Flash On',
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: darkMaroon,
+                              foregroundColor: cream,
+                              disabledBackgroundColor: darkMaroon.withValues(
+                                alpha: 0.5,
+                              ),
+                              disabledForegroundColor: cream.withValues(
+                                alpha: 0.5,
+                              ),
+                              elevation: 0,
+                              minimumSize: const Size(double.infinity, 48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 16),
+
+              // ==================================================
+              // INFO CARD
+              // ==================================================
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      color: darkMaroon,
+                      size: 20,
+                    ),
+
+                    SizedBox(width: 10),
+
+                    Expanded(
+                      child: Text(
+                        widget.createParcel
+                            ? 'After scanning, the parcel will be processed and added to your Pickups.'
+                            : widget.scanPurpose == 'payout'
+                            ? 'Scanning does not mark a payout as paid. Verify the claim details before confirming payment.'
+                            : 'The QR contents are checked by the current workflow. Scanning does not create or mark a parcel as collected.',
+                        style: const TextStyle(
+                          color: brownBeige,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  String _titleCase(String value) {
+    if (value.isEmpty) return value;
+    return '${value[0].toUpperCase()}${value.substring(1)}';
   }
 }
 
@@ -620,19 +664,19 @@ class _ScannerCorner extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border(
             top: alignment.y < 0
-                ? const BorderSide(color: Color(0xFFE0CFC2), width: 5)
+                ? const BorderSide(color: Colors.white, width: 4)
                 : BorderSide.none,
 
             bottom: alignment.y > 0
-                ? const BorderSide(color: Color(0xFFE0CFC2), width: 5)
+                ? const BorderSide(color: Colors.white, width: 4)
                 : BorderSide.none,
 
             left: alignment.x < 0
-                ? const BorderSide(color: Color(0xFFE0CFC2), width: 5)
+                ? const BorderSide(color: Colors.white, width: 4)
                 : BorderSide.none,
 
             right: alignment.x > 0
-                ? const BorderSide(color: Color(0xFFE0CFC2), width: 5)
+                ? const BorderSide(color: Colors.white, width: 4)
                 : BorderSide.none,
           ),
         ),

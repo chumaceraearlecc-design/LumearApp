@@ -73,6 +73,8 @@ class DeliveryDetailsScreen extends StatefulWidget {
   final String distance;
   final String fee;
   final String customerPhone;
+  final bool sellerPickupHandoff;
+  final int? pickedUpParcelCount;
 
   const DeliveryDetailsScreen({
     super.key,
@@ -82,7 +84,9 @@ class DeliveryDetailsScreen extends StatefulWidget {
     required this.address,
     required this.distance,
     required this.fee,
-    this.customerPhone = '+639123456789',
+    this.customerPhone = '',
+    this.sellerPickupHandoff = false,
+    this.pickedUpParcelCount,
   });
 
   @override
@@ -138,6 +142,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   static const String _paymentMethod = 'Cash on Delivery';
   static const String _codAmount = '₱450.00';
   bool _codCollected = false;
+  bool _isShowingConfirmation = false;
+  bool _completionSubmitted = false;
 
   // ============================================================
   // SAMPLE LOCATIONS
@@ -461,7 +467,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
       final bool confirm = await _showConfirmation(
         title: 'Confirm Parcel Pickup',
         message:
-            'Confirm that you have collected Order ${widget.orderNumber} from ${widget.store}.',
+            'Have you collected order ${widget.orderNumber} from ${widget.store}?',
         confirmText: 'Confirm Pickup',
         icon: Icons.inventory_2_outlined,
       );
@@ -506,7 +512,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
       final bool confirm = await _showConfirmation(
         title: 'Confirm Delivery',
-        message: 'COD payment has been collected and Proof of Delivery is complete. Confirm that the parcel was successfully handed to the receiver.',
+        message: 'The COD payment has been collected and proof of delivery is complete. Confirm that the parcel was handed to the recipient.',
         confirmText: 'Confirm Delivered',
         icon: Icons.verified_outlined,
       );
@@ -1089,70 +1095,81 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     required String confirmText,
     required IconData icon,
   }) async {
-    final bool? result = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: cream,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: lightBeige,
-                  borderRadius: BorderRadius.circular(12),
+    if (_isShowingConfirmation) return false;
+
+    _isShowingConfirmation = true;
+    bool confirmationSubmitted = false;
+
+    try {
+      final bool? result = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            backgroundColor: cream,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: lightBeige,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: darkMaroon),
                 ),
-                child: Icon(icon, color: darkMaroon),
-              ),
-
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: darkMaroon,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: darkMaroon,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          content: Text(
-            message,
-            style: const TextStyle(color: brownBeige, height: 1.5),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
-              child: const Text('Cancel', style: TextStyle(color: brownBeige)),
+              ],
             ),
-
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, true);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: darkMaroon,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            content: Text(
+              message,
+              style: const TextStyle(color: brownBeige, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext, false);
+                },
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: brownBeige),
                 ),
               ),
-              child: Text(confirmText),
-            ),
-          ],
-        );
-      },
-    );
+              ElevatedButton(
+                onPressed: () {
+                  if (confirmationSubmitted) return;
+                  confirmationSubmitted = true;
+                  Navigator.pop(dialogContext, true);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: darkMaroon,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(confirmText),
+              ),
+            ],
+          );
+        },
+      );
 
-    return result ?? false;
+      return result ?? false;
+    } finally {
+      _isShowingConfirmation = false;
+    }
   }
 
   // ============================================================
@@ -1308,6 +1325,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () {
+                    if (_completionSubmitted) return;
+                    _completionSubmitted = true;
                     final DateTime deliveredAt =
                         _stageTimes[DeliveryStage.delivered] ?? DateTime.now();
 
@@ -1404,7 +1423,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   }
 
   Future<void> _callCustomer() async {
-    final String? phoneNumber = _normalizePhilippinePhone(widget.customerPhone);
+    final String? phoneNumber = _customerPhoneForDialer;
 
     if (phoneNumber == null) {
       _showTopNotification(
@@ -1445,12 +1464,19 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     }
   }
 
+  String? get _customerPhoneForDialer =>
+      _normalizePhilippinePhone(widget.customerPhone);
+
   // ============================================================
   // BUILD
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
+    if (widget.sellerPickupHandoff) {
+      return _buildSellerPickupHandoff();
+    }
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: cream,
@@ -1756,6 +1782,157 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSellerPickupHandoff() {
+    return Scaffold(
+      backgroundColor: cream,
+      appBar: AppBar(
+        backgroundColor: cream,
+        title: const Text(
+          'Heading to Sorting Center',
+          style: TextStyle(color: darkMaroon, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            SizedBox(
+              height: 230,
+              width: double.infinity,
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _pickupLocation,
+                  initialZoom: 14,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.flutter_application_1',
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _pickupLocation,
+                        width: 54,
+                        height: 54,
+                        child: const Icon(
+                          Icons.warehouse_rounded,
+                          color: darkMaroon,
+                          size: 40,
+                        ),
+                      ),
+                      if (_riderLocation != null)
+                        Marker(
+                          point: _riderLocation!,
+                          width: 54,
+                          height: 54,
+                          child: const Icon(
+                            Icons.delivery_dining_rounded,
+                            color: maroon,
+                            size: 38,
+                          ),
+                        ),
+                    ],
+                  ),
+                  RichAttributionWidget(
+                    attributions: [
+                      TextSourceAttribution('OpenStreetMap contributors'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: lightBeige,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.warehouse_outlined,
+                          color: darkMaroon,
+                          size: 34,
+                        ),
+                        SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            'Seller pickup confirmed',
+                            style: TextStyle(
+                              color: darkMaroon,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _handoffInfo('Pickup request', widget.orderNumber),
+                  _handoffInfo(
+                    'Parcels collected',
+                    '${widget.pickedUpParcelCount ?? 0}',
+                  ),
+                  _handoffInfo('Sorting center', widget.store),
+                  _handoffInfo(
+                    'Seller phone',
+                    widget.customerPhone.trim().isEmpty
+                        ? 'Not provided'
+                        : widget.customerPhone,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Proceed to the assigned sorting center with the confirmed parcels.',
+                    style: TextStyle(
+                      color: brownBeige,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _handoffInfo(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 132,
+            child: Text(
+              label,
+              style: const TextStyle(color: brownBeige, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: darkMaroon,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2467,7 +2644,11 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
           const Divider(height: 26, color: lightBeige),
 
-          _detailRow(Icons.payments_outlined, 'Rider Fee', widget.fee),
+          _detailRow(
+            Icons.phone_outlined,
+            'Customer Number',
+            _customerPhoneForDialer ?? 'Not provided',
+          ),
         ],
       ),
     );

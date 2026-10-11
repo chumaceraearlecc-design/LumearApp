@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_application_1/models/rider_profile.dart';
+import 'package:flutter_application_1/data/hardcoded_rider.dart';
 
 import 'personal_information_screen.dart';
 import 'vehicle_information_screen.dart';
@@ -11,6 +12,7 @@ import 'app_settings_screen.dart';
 import 'help_support_screen.dart';
 import 'rider_performance_screen.dart';
 import 'login_screen.dart';
+import 'assignment_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -665,7 +667,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              RiderProfile.name,
+                              HardcodedRider.fullName,
                               style: const TextStyle(
                                 fontSize: 21,
                                 fontWeight: FontWeight.w800,
@@ -688,7 +690,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 4),
 
                       Text(
-                        'Rider ID: ${RiderProfile.riderId}',
+                        'Rider ID: ${HardcodedRider.riderId}',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: Colors.white.withValues(alpha: 0.75),
@@ -861,6 +863,128 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
 
               const SizedBox(height: 26),
+
+              _EntranceAnimation(delay: 220, child: _sectionLabel('Work')),
+
+              const SizedBox(height: 12),
+
+              _EntranceAnimation(
+                delay: 240,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: cardDecoration,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: darkMaroon.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.assignment_rounded,
+                              color: darkMaroon,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Current Assignment',
+                              style: TextStyle(
+                                color: darkMaroon,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: success.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Active',
+                              style: TextStyle(
+                                color: success,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _AssignmentInfoItem(
+                              icon: Icons.warehouse_outlined,
+                              label: 'Assigned hub',
+                              value: AssignmentScreen.assignedHub,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _AssignmentInfoItem(
+                              icon: Icons.location_on_outlined,
+                              label: 'Delivery area',
+                              value: AssignmentScreen.assignedArea,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _AssignmentInfoItem(
+                              icon: Icons.schedule_rounded,
+                              label: 'Shift',
+                              value: AssignmentScreen.assignedShift,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _AssignmentInfoItem(
+                              icon: Icons.inventory_2_outlined,
+                              label: 'Assigned parcels',
+                              value: '${AssignmentScreen.assignedParcels}',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const AssignmentScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                        label: const Text('View assignment details'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: darkMaroon,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
 
               // ============================================
               // ACCOUNT
@@ -1149,6 +1273,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CURRENT ASSIGNMENT INFO ITEM
+// ============================================================
+
+class _AssignmentInfoItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _AssignmentInfoItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const darkMaroon = Color(0xFF62191C);
+    const cream = Color(0xFFF3E9E1);
+    const textMuted = Color(0xFF8B6F63);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cream,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: darkMaroon.withValues(alpha: 0.09),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: darkMaroon, size: 17),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: textMuted,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: darkMaroon,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

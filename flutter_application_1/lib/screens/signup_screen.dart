@@ -615,6 +615,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
+    if (_calculateAge(_selectedBirthday!) < 18) {
+      _showMessage(
+        'You must be at least 18 years old to continue.',
+        icon: Icons.cake_outlined,
+      );
+
+      return false;
+    }
+
     return true;
   }
 

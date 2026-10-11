@@ -36,6 +36,7 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen> {
   static const Color cream = Color(0xFFE0CFC2);
 
   String _status = 'Out for Delivery';
+  bool _isConfirmingDelivery = false;
 
   // ============================================
   // ARRIVED AT DESTINATION
@@ -56,6 +57,11 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen> {
   // CONFIRM DELIVERY
   // ============================================
   void _confirmDelivery() {
+    if (_isConfirmingDelivery || _status == 'Delivered') return;
+
+    _isConfirmingDelivery = true;
+    bool confirmationSubmitted = false;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -93,6 +99,8 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen> {
             ),
             ElevatedButton(
               onPressed: () {
+                if (confirmationSubmitted) return;
+                confirmationSubmitted = true;
                 Navigator.pop(dialogContext);
                 _showSuccessDialog();
               },
@@ -105,7 +113,9 @@ class _ParcelDeliveryScreenState extends State<ParcelDeliveryScreen> {
           ],
         );
       },
-    );
+    ).whenComplete(() {
+      _isConfirmingDelivery = false;
+    });
   }
 
   // ============================================
