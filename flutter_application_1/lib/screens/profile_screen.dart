@@ -714,7 +714,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Icon(
                               Icons.circle,
                               size: 8,
-                              color: Colors.greenAccent,
+                              color: Color(0xFFF3E9E1),
                             ),
 
                             SizedBox(width: 7),
@@ -801,10 +801,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: success.withValues(alpha: 0.08),
+                        color: const Color(0xFF873632).withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(radiusLg),
                         border: Border.all(
-                          color: success.withValues(alpha: 0.22),
+                          color: const Color(0xFF873632)
+                              .withValues(alpha: 0.22),
                         ),
                       ),
                       child: Row(
@@ -813,7 +814,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             width: 42,
                             height: 42,
                             decoration: BoxDecoration(
-                              color: success,
+                              color: const Color(0xFF873632),
                               borderRadius: BorderRadius.circular(13),
                             ),
                             child: const Icon(
@@ -853,7 +854,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                           const Icon(
                             Icons.chevron_right_rounded,
-                            color: success,
+                            color: Color(0xFF873632),
                           ),
                         ],
                       ),
@@ -908,13 +909,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: success.withValues(alpha: 0.08),
+                              color: const Color(0xFF873632)
+                                  .withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Text(
                               'Active',
                               style: TextStyle(
-                                color: success,
+                                color: Color(0xFF873632),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                               ),

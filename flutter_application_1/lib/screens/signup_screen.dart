@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/models/rider_profile.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
@@ -100,7 +101,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final ImagePicker _picker = ImagePicker();
 
   XFile? _licenseImage;
-  XFile? _orCrImage;
+  XFile? _orImage;
+  XFile? _crImage;
 
   OverlayEntry? _topNotificationEntry;
 
@@ -755,11 +757,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    if (_orCrImage == null) {
-      _showMessage(
-        'Please upload your OR/CR.',
-        icon: Icons.description_outlined,
-      );
+    if (_orImage == null) {
+      _showMessage('Please upload your OR.', icon: Icons.description_outlined);
+
+      return false;
+    }
+
+    if (_crImage == null) {
+      _showMessage('Please upload your CR.', icon: Icons.description_outlined);
 
       return false;
     }
@@ -767,7 +772,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return true;
   }
 
-  Future<void> _pickDocumentPhoto({required bool isLicense}) async {
+  Future<void> _pickDocumentPhoto({required String documentType}) async {
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: cream,
@@ -858,10 +863,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
 
       setState(() {
-        if (isLicense) {
-          _licenseImage = image;
-        } else {
-          _orCrImage = image;
+        switch (documentType) {
+          case 'license':
+            _licenseImage = image;
+          case 'or':
+            _orImage = image;
+          case 'cr':
+            _crImage = image;
         }
       });
     } catch (e) {
@@ -893,13 +901,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _selectedBarangay == null ||
         _selectedVehicleType == null ||
         _licenseImage == null ||
-        _orCrImage == null) {
+        _orImage == null ||
+        _crImage == null) {
       _showMessage(
         'Please complete all registration information.',
         icon: Icons.warning_amber_rounded,
       );
       return;
     }
+
+    _saveLocalRiderProfile();
 
     FocusScope.of(context).unfocus();
 
@@ -920,6 +931,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     _showPendingVerificationDialog();
+  }
+
+  void _saveLocalRiderProfile() {
+    RiderProfile.name = _fullNameController.text.trim();
+    RiderProfile.email = _emailController.text.trim();
+    RiderProfile.phone = '+63 ${_phoneController.text.trim()}';
+    RiderProfile.birthday = _formatBirthday(_selectedBirthday!);
+    RiderProfile.age = int.tryParse(_ageController.text.trim());
+    RiderProfile.region = _selectedRegion!;
+    RiderProfile.province = _selectedProvince!;
+    RiderProfile.municipality = _selectedMunicipality!;
+    RiderProfile.barangay = _selectedBarangay!;
+    RiderProfile.street = _streetController.text.trim();
+    RiderProfile.houseUnit = _houseUnitController.text.trim();
+    RiderProfile.vehicleType = _selectedVehicleType!;
+    RiderProfile.licenseNumber = _licenseNumberController.text.trim();
+    RiderProfile.plateNumber = _plateNumberController.text.trim();
+    RiderProfile.localDriverLicenseFile = File(_licenseImage!.path);
+    RiderProfile.localOrFile = File(_orImage!.path);
+    RiderProfile.localCrFile = File(_crImage!.path);
+    RiderProfile.status = 'Local demo profile';
   }
 
   void _showMessage(String message, {IconData? icon}) {
@@ -1809,6 +1841,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 onTap: () {
                   setState(() {
                     _selectedVehicleType = label;
+                    RiderProfile.vehicleType = label;
                   });
                 },
                 borderRadius: BorderRadius.circular(13),
@@ -1868,19 +1901,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
           image: _licenseImage,
           icon: Icons.badge_outlined,
           onTap: () {
-            _pickDocumentPhoto(isLicense: true);
+            _pickDocumentPhoto(documentType: 'license');
           },
         ),
         const SizedBox(height: 10),
         _compactDocumentCard(
-          title: 'OR / CR',
-          subtitle: _orCrImage == null
-              ? 'Vehicle registration'
-              : 'Photo uploaded',
-          image: _orCrImage,
+          title: 'Official Receipt (OR)',
+          subtitle: _orImage == null ? 'Upload OR' : 'OR uploaded',
+          image: _orImage,
           icon: Icons.description_outlined,
           onTap: () {
-            _pickDocumentPhoto(isLicense: false);
+            _pickDocumentPhoto(documentType: 'or');
+          },
+        ),
+        const SizedBox(height: 10),
+        _compactDocumentCard(
+          title: 'Certificate of Registration (CR)',
+          subtitle: _crImage == null ? 'Upload CR' : 'CR uploaded',
+          image: _crImage,
+          icon: Icons.article_outlined,
+          onTap: () {
+            _pickDocumentPhoto(documentType: 'cr');
           },
         ),
         const SizedBox(height: 12),

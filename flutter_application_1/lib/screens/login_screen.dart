@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/rider_profile.dart';
 
 import 'dashboard_screen.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
+import 'hub_transfer_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -79,6 +81,20 @@ class _LoginScreenState extends State<LoginScreen>
   // LOGIN
   // ============================================================
 
+  String? _canonicalVehicleType(String value) {
+    final String normalized = value.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]'),
+      '',
+    );
+
+    return switch (normalized) {
+      'motorcycle' || 'motorbike' => 'Motorcycle',
+      'truck' => 'Truck',
+      'van' => 'Van',
+      _ => null,
+    };
+  }
+
   Future<void> _login() async {
     // Close keyboard
     FocusScope.of(context).unfocus();
@@ -117,6 +133,19 @@ class _LoginScreenState extends State<LoginScreen>
         MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
       );
 
+      return;
+    }
+
+    final String? vehicleType = _canonicalVehicleType(RiderProfile.vehicleType);
+    if (vehicleType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please select a supported vehicle in Sign Up before logging in.',
+          ),
+          backgroundColor: darkMaroon,
+        ),
+      );
       return;
     }
 
@@ -175,7 +204,11 @@ class _LoginScreenState extends State<LoginScreen>
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const DashboardScreen()),
+      MaterialPageRoute(
+        builder: (context) => vehicleType == 'Motorcycle'
+            ? const DashboardScreen()
+            : const HubTransferDashboardScreen(),
+      ),
     );
   }
 

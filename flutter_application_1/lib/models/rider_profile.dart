@@ -2,6 +2,9 @@ import 'dart:io';
 
 class RiderProfile {
   static File? profileImage;
+  static File? localDriverLicenseFile;
+  static File? localOrFile;
+  static File? localCrFile;
 
   static int? id;
   static String name = '';
@@ -64,6 +67,9 @@ class RiderProfile {
 
   static void clear() {
     profileImage = null;
+    localDriverLicenseFile = null;
+    localOrFile = null;
+    localCrFile = null;
     id = null;
     name = '';
     riderId = '';

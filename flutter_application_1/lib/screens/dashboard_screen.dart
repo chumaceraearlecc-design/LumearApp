@@ -1126,7 +1126,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           Icons.circle,
                                           size: 8,
                                           color: _isAvailable
-                                              ? success
+                                              ? const Color(0xFF62191C)
                                               : textMuted,
                                         ),
                                         const SizedBox(width: 6),
@@ -1134,7 +1134,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           _isAvailable ? 'Online' : 'Offline',
                                           style: TextStyle(
                                             color: _isAvailable
-                                                ? success
+                                                ? const Color(0xFF62191C)
                                                 : textMuted,
                                             fontSize: 11,
                                             fontWeight: FontWeight.w700,
@@ -1314,7 +1314,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Expanded(
                               child: _statCard(
                                 icon: Icons.inventory_2_rounded,
-                                iconColor: warning,
+                                iconColor: const Color(0xFF62191C),
                                 value: parcel != null && !_isParcelCompleted
                                     ? '1'
                                     : '0',
@@ -1327,7 +1327,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Expanded(
                               child: _statCard(
                                 icon: Icons.check_circle_rounded,
-                                iconColor: success,
+                                iconColor: const Color(0xFF62191C),
                                 value: _isParcelCompleted ? '6' : '5',
                                 label: 'Completed',
                               ),

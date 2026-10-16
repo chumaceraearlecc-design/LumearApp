@@ -136,7 +136,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                 children: [
                                   Icon(
                                     Icons.check_circle_rounded,
-                                    color: Colors.greenAccent,
+                                    color: Color(0xFFF3E9E1),
                                     size: 17,
                                   ),
                                   SizedBox(width: 7),
@@ -254,12 +254,13 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                   width: 44,
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: success.withValues(alpha: 0.10),
+                                    color: const Color(0xFF62191C)
+                                        .withValues(alpha: 0.10),
                                     borderRadius: BorderRadius.circular(13),
                                   ),
                                   child: const Icon(
                                     Icons.check_circle_rounded,
-                                    color: success,
+                                    color: Color(0xFF62191C),
                                     size: 23,
                                   ),
                                 ),
@@ -291,7 +292,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                       const Text(
                                         'Delivery completed successfully',
                                         style: TextStyle(
-                                          color: success,
+                                          color: Color(0xFF62191C),
                                           fontSize: 11,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -303,7 +304,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                                 Text(
                                   '+${_formatPeso(transaction.amount)}',
                                   style: TextStyle(
-                                    color: success,
+                                    color: const Color(0xFF62191C),
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800,
                                   ),
