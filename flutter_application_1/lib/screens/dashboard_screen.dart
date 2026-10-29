@@ -11,6 +11,8 @@ import 'package:flutter_application_1/screens/delivers_screen.dart';
 import 'package:flutter_application_1/screens/delivery_details_screen.dart';
 import 'package:flutter_application_1/screens/earnings_screen.dart';
 import 'package:flutter_application_1/screens/help_support_screen.dart';
+import 'package:flutter_application_1/screens/buyer_chat_list_screen.dart';
+import 'package:flutter_application_1/screens/rider_daily_report_screen.dart';
 
 import 'profile_screen.dart';
 
@@ -37,6 +39,119 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const Color success = Color(0xFF2E7D32);
   static const Color warning = Color(0xFFC77700);
   static const Color danger = Color(0xFFB3261E);
+
+  // ============================================================
+  // VEHICLE AND JOB TYPE
+  // ============================================================
+
+  String get _vehicleType {
+    return RiderProfile.normalizedVehicleType.trim().toLowerCase();
+  }
+
+  String get _jobType {
+    return RiderProfile.jobType.trim().toLowerCase().replaceAll('_', '-');
+  }
+
+  bool get _isHubToHub {
+    return _vehicleType == 'truck' &&
+        (_jobType == 'hub-to-hub' ||
+            _jobType == 'hub to hub' ||
+            _jobType == 'hub transfer');
+  }
+
+  // Not displayed yet. Handy for an app bar / Truck Management screen later.
+  // ignore: unused_element
+  String get _dashboardTitle {
+    if (_isHubToHub) return 'Truck Management';
+
+    switch (_vehicleType) {
+      case 'van':
+      case 'delivery van':
+        return 'Van Delivery Dashboard';
+
+      case 'truck':
+      case 'delivery truck':
+        return 'Truck Delivery Dashboard';
+
+      case 'motor':
+      case 'motorcycle':
+      case 'motorbike':
+        return 'Motor Delivery Dashboard';
+
+      default:
+        return 'Rider Dashboard';
+    }
+  }
+
+  String get _welcomeMessage {
+    if (_isHubToHub) return 'Good day, Truck Driver!';
+
+    switch (_vehicleType) {
+      case 'van':
+      case 'delivery van':
+        return 'Good day, Van Driver!';
+
+      case 'truck':
+      case 'delivery truck':
+        return 'Good day, Truck Driver!';
+
+      case 'motor':
+      case 'motorcycle':
+      case 'motorbike':
+        return 'Good day, Motor Rider!';
+
+      default:
+        return 'Good day!';
+    }
+  }
+
+  // NOTE: these use a real newline ('\n'), so no replaceAll is needed
+  // when displaying them.
+  String get _heroTitle {
+    if (_isHubToHub) return 'Manage Your\nHub-to-Hub Trips';
+
+    switch (_vehicleType) {
+      case 'van':
+      case 'delivery van':
+        return 'Van Delivery\nMade Easier';
+
+      case 'truck':
+      case 'delivery truck':
+        return 'Truck Delivery\nMade Easier';
+
+      case 'motor':
+      case 'motorcycle':
+      case 'motorbike':
+        return 'Motor Delivery\nMade Easier';
+
+      default:
+        return "Let's Deliver\nA Better Tomorrow";
+    }
+  }
+
+  String get _heroSubtitle {
+    if (_isHubToHub) {
+      return 'Manage your assigned trips and parcel handovers.';
+    }
+
+    switch (_vehicleType) {
+      case 'van':
+      case 'delivery van':
+        return 'Manage your van deliveries and routes.';
+
+      case 'truck':
+      case 'delivery truck':
+        return 'Manage your truck deliveries and routes.';
+
+      case 'motor':
+      case 'motorcycle':
+      case 'motorbike':
+        return 'Manage your motor deliveries and routes.';
+
+      default:
+        return 'Every delivery brings people closer.';
+    }
+  }
 
   // ============================================================
   // DESIGN SYSTEM — SHAPE & ELEVATION
@@ -128,6 +243,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool get _isParcelFailed {
     return _currentParcel?.status == 'Delivery Failed';
   }
+
+  // Dashboard statistics are derived from the same ParcelStore used by Pickups.
+  bool _isToday(DateTime? date) {
+    if (date == null) return false;
+    final now = DateTime.now();
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
+  }
+
+  int get _todayDeliveredCount => ParcelStore.parcels.value
+      .where((p) => p.status == 'Delivered' && _isToday(p.deliveredAt))
+      .length;
+
+  int get _todayFailedCount => ParcelStore.parcels.value
+      .where(
+        (p) => p.status == 'Delivery Failed' && _isToday(p.statusUpdatedAt),
+      )
+      .length;
+
+  int get _pickupCount => ParcelStore.parcels.value
+      .where((p) => p.status == 'To Pick Up' || p.status == 'Pending')
+      .length;
+
+  double get _todayCodCollected => ParcelStore.parcels.value
+      .where((p) => p.status == 'Delivered' && _isToday(p.deliveredAt))
+      .fold<double>(0, (sum, p) => sum + p.codAmount);
+
+  double get _todayRiderEarnings =>
+      ParcelStore.earnedParcels.value
+          .where((p) => _isToday(p.deliveredAt))
+          .length *
+      ParcelStore.earningPerDelivery;
 
   // ============================================================
   // INIT
@@ -223,7 +371,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           key: const ValueKey('scanner'),
           child: QrScannerScreen(
             onParcelScanned: (qrValue) async {
-              ParcelStore.createParcelFromQr(qrValue);
+              await _handleParcelScanned(qrValue);
             },
           ),
         );
@@ -716,7 +864,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _addNotification(
       title: 'Delivery Started',
       message:
-          '${parcel.parcelNumber} is now active. Proceed to ${parcel.hub} for pickup.',
+          '${parcel.parcelNumber} is now active. Proceed to deliver to ${parcel.recipient}.',
       icon: Icons.delivery_dining,
       playSound: false,
     );
@@ -724,7 +872,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
 
     _showTopNotification(
-      'Delivery started! Proceed to the pickup location.',
+      'Delivery started! Proceed to the delivery address.',
       icon: Icons.delivery_dining,
     );
 
@@ -778,6 +926,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (status == 'completed') {
       ParcelStore.updateStatus('Delivered');
 
+      // Credit earnings once for each successful delivery.
+      final completedParcel = ParcelStore.parcels.value.firstWhere(
+        (p) => p.trackingNumber == parcel.trackingNumber,
+        orElse: () => ParcelStore.currentParcel.value ?? parcel,
+      );
+      ParcelStore.awardSuccessfulDelivery(completedParcel);
+
       await _addNotification(
         title: 'Delivery Completed',
         message:
@@ -818,6 +973,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.error_outline,
       );
     }
+  }
+
+  // ============================================================
+  // BUYER CHAT
+  // ============================================================
+
+  void _openBuyerChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const BuyerChatListScreen()),
+    );
+  }
+
+  // ============================================================
+  // DAILY PDF REPORT
+  // ============================================================
+
+  Future<void> _openDailyReport() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const RiderDailyReportScreen()),
+    );
   }
 
   // ============================================================
@@ -1071,9 +1248,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Dynamic welcome message (vehicle/job type)
                               Text(
-                                'Good Morning',
-                                style: TextStyle(
+                                _welcomeMessage,
+                                style: const TextStyle(
                                   color: textMuted,
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w500,
@@ -1206,7 +1384,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 22),
 
                   // ==========================================
-                  // HERO CARD
+                  // HERO CARD (dynamic banner)
                   // ==========================================
                   _EntranceAnimation(
                     delay: 90,
@@ -1230,22 +1408,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       child: Stack(
                         children: [
-                          Positioned(
-                            right: -18,
-                            top: -18,
-                            child: Icon(
-                              Icons.local_shipping_rounded,
-                              size: 110,
-                              color: Colors.white.withValues(alpha: 0.07),
-                            ),
-                          ),
-
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                "Let's Deliver\nA Better Tomorrow",
-                                style: TextStyle(
+                              Text(
+                                _heroTitle,
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 25,
                                   fontWeight: FontWeight.w800,
@@ -1257,7 +1425,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               const SizedBox(height: 8),
 
                               Text(
-                                'Every delivery brings people closer.',
+                                _heroSubtitle,
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.75),
                                   fontSize: 13,
@@ -1303,7 +1471,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 22),
 
                   // ==========================================
-                  // STATS
+                  // LIVE PARCEL & DAILY STATS
                   // ==========================================
                   _EntranceAnimation(
                     delay: 150,
@@ -1314,51 +1482,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Expanded(
                               child: _statCard(
                                 icon: Icons.inventory_2_rounded,
-                                iconColor: const Color(0xFF62191C),
-                                value: parcel != null && !_isParcelCompleted
-                                    ? '1'
-                                    : '0',
-                                label: 'Pending',
+                                iconColor: darkMaroon,
+                                value: '$_pickupCount',
+                                label: 'Pickups',
                               ),
                             ),
-
                             const SizedBox(width: 12),
-
                             Expanded(
                               child: _statCard(
                                 icon: Icons.check_circle_rounded,
-                                iconColor: const Color(0xFF62191C),
-                                value: _isParcelCompleted ? '6' : '5',
-                                label: 'Completed',
+                                iconColor: darkMaroon,
+                                value: '$_todayDeliveredCount',
+                                label: 'Delivered Today',
                               ),
                             ),
                           ],
                         ),
-
                         const SizedBox(height: 12),
-
                         Row(
                           children: [
                             Expanded(
                               child: _statCard(
                                 icon: Icons.payments_rounded,
                                 iconColor: darkMaroon,
-                                value: _isParcelCompleted ? '₱450' : '₱0',
-                                label: 'COD Collected',
+                                value:
+                                    '₱${_todayCodCollected.toStringAsFixed(0)}',
+                                label: 'COD Collected Today',
                               ),
                             ),
-
                             const SizedBox(width: 12),
-
                             Expanded(
                               child: _statCard(
-                                icon: Icons.bar_chart_rounded,
+                                icon: Icons.account_balance_wallet_rounded,
                                 iconColor: maroon,
-                                value: _isParcelCompleted ? '13' : '12',
-                                label: 'Deliveries',
+                                value:
+                                    '₱${_todayRiderEarnings.toStringAsFixed(0)}',
+                                label: 'Earnings Today',
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _openDailyReport,
+                            icon: const Icon(Icons.picture_as_pdf_rounded),
+                            label: const Text(
+                              'Generate Daily PDF Report',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: darkMaroon,
+                              side: const BorderSide(color: darkMaroon),
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(radiusSm),
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -1427,8 +1609,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
 
                             _quickAction(
-                              icon: Icons.chat_bubble_outline_rounded,
-                              label: 'Chat',
+                              icon: Icons.forum_outlined,
+                              label: 'Buyer Chat',
+                              onTap: _openBuyerChat,
+                            ),
+
+                            _quickAction(
+                              icon: Icons.support_agent_rounded,
+                              label: 'Support',
                               onTap: () {
                                 Navigator.push(
                                   context,
@@ -1443,7 +1631,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               icon: Icons.person_outline_rounded,
                               label: 'Profile',
                               onTap: () {
-                                _goToPage(3);
+                                _goToPage(4);
                               },
                             ),
                           ],
@@ -1659,43 +1847,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 20),
 
+          // Delivery destination only. There is no seller pickup task
+          // on this dashboard, so the "Pick up at" section was removed.
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: cream.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Column(
-              children: [
-                _deliveryInfo(
-                  icon: Icons.warehouse_rounded,
-                  label: 'Pick up at',
-                  title: parcel.hub,
-                  subtitle: 'Lumear Seller Hub',
-                ),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 19),
-                      Expanded(
-                        child: Container(
-                          height: 1,
-                          color: darkMaroon.withValues(alpha: 0.08),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                _deliveryInfo(
-                  icon: Icons.location_on_rounded,
-                  label: 'Deliver to',
-                  title: parcel.recipient,
-                  subtitle: parcel.address,
-                ),
-              ],
+            child: _deliveryInfo(
+              icon: Icons.location_on_rounded,
+              label: 'Deliver to',
+              title: parcel.recipient,
+              subtitle: parcel.address,
             ),
           ),
 
@@ -2037,8 +2201,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         children: [
           Container(
-            width: primary ? 66 : 58,
-            height: primary ? 66 : 58,
+            width: primary ? 62 : 54,
+            height: primary ? 62 : 54,
             decoration: BoxDecoration(
               color: primary ? darkMaroon : surface,
               borderRadius: BorderRadius.circular(19),
@@ -2055,7 +2219,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Icon(
               icon,
               color: primary ? Colors.white : darkMaroon,
-              size: primary ? 29 : 24,
+              size: primary ? 28 : 23,
             ),
           ),
 
@@ -2065,7 +2229,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label,
             style: const TextStyle(
               color: darkMaroon,
-              fontSize: 11.5,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
           ),

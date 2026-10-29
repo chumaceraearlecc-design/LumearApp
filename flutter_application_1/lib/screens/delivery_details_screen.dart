@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,18 +13,15 @@ import 'package:url_launcher/url_launcher.dart';
 // ============================================================
 // DELIVERY STAGE (enum instead of raw strings)
 //
-// Replaces the previous free-form `String _status` with a type-safe
-// enum. This removes an entire class of bugs where a typo'd string
-// literal (e.g. 'Heading to sorting center' vs 'Heading to Sorting
-// Center') would silently fail every == comparison with no warning
-// from the compiler.
+// Flow: Pick Up from Sorting Center -> In Transit ->
+//       Arrived at Customer -> Delivered
+// Failure branch: Delivery Failed (from In Transit / Arrived)
 // ============================================================
 
 enum DeliveryStage {
-  headingToSortingCenter,
-  parcelPickedUp,
-  outForDelivery,
-  arrivedAtDestination,
+  pickUpFromSorting,
+  inTransit,
+  arrivedAtCustomer,
   delivered,
   deliveryFailed,
 }
@@ -31,14 +30,12 @@ extension DeliveryStageX on DeliveryStage {
   /// Long label used in status text throughout the screen.
   String get label {
     switch (this) {
-      case DeliveryStage.headingToSortingCenter:
-        return 'Heading to Sorting Center';
-      case DeliveryStage.parcelPickedUp:
-        return 'Parcel Picked Up';
-      case DeliveryStage.outForDelivery:
-        return 'Out for Delivery';
-      case DeliveryStage.arrivedAtDestination:
-        return 'Arrived at Destination';
+      case DeliveryStage.pickUpFromSorting:
+        return 'Pick Up from Sorting Center';
+      case DeliveryStage.inTransit:
+        return 'In Transit';
+      case DeliveryStage.arrivedAtCustomer:
+        return 'Arrived at Customer';
       case DeliveryStage.delivered:
         return 'Delivered';
       case DeliveryStage.deliveryFailed:
@@ -49,14 +46,12 @@ extension DeliveryStageX on DeliveryStage {
   /// Short label used in the horizontal stage indicator.
   String get shortLabel {
     switch (this) {
-      case DeliveryStage.headingToSortingCenter:
-        return 'Sorting';
-      case DeliveryStage.parcelPickedUp:
-        return 'Picked Up';
-      case DeliveryStage.outForDelivery:
+      case DeliveryStage.pickUpFromSorting:
+        return 'Pick Up';
+      case DeliveryStage.inTransit:
         return 'Transit';
-      case DeliveryStage.arrivedAtDestination:
-        return 'Drop-off';
+      case DeliveryStage.arrivedAtCustomer:
+        return 'Arrived';
       case DeliveryStage.delivered:
         return 'Delivered';
       case DeliveryStage.deliveryFailed:
@@ -73,8 +68,6 @@ class DeliveryDetailsScreen extends StatefulWidget {
   final String distance;
   final String fee;
   final String customerPhone;
-  final bool sellerPickupHandoff;
-  final int? pickedUpParcelCount;
 
   const DeliveryDetailsScreen({
     super.key,
@@ -85,8 +78,6 @@ class DeliveryDetailsScreen extends StatefulWidget {
     required this.distance,
     required this.fee,
     this.customerPhone = '',
-    this.sellerPickupHandoff = false,
-    this.pickedUpParcelCount,
   });
 
   @override
@@ -108,14 +99,13 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   // DELIVERY STATUS
   // ============================================================
 
-  DeliveryStage _status = DeliveryStage.headingToSortingCenter;
+  DeliveryStage _status = DeliveryStage.pickUpFromSorting;
 
   // Successful path shown by the compact stage indicator.
   static const List<DeliveryStage> _progressStages = [
-    DeliveryStage.headingToSortingCenter,
-    DeliveryStage.parcelPickedUp,
-    DeliveryStage.outForDelivery,
-    DeliveryStage.arrivedAtDestination,
+    DeliveryStage.pickUpFromSorting,
+    DeliveryStage.inTransit,
+    DeliveryStage.arrivedAtCustomer,
     DeliveryStage.delivered,
   ];
 
@@ -146,6 +136,16 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   bool _completionSubmitted = false;
 
   // ============================================================
+  // SHIPPING FEE SPLIT
+  // Shipping fee is ₱50. Logistics gets 20% (₱10), the rider gets
+  // the remaining 80% (₱40). Credited only after a successful delivery.
+  // ============================================================
+  static const double _shippingFee = 50.0;
+  static const double _logisticsRate = 0.20;
+  static const double _logisticsShare = _shippingFee * _logisticsRate; // 10
+  static const double _riderShare = _shippingFee - _logisticsShare; // 40
+
+  // ============================================================
   // SAMPLE LOCATIONS
   // ============================================================
 
@@ -163,10 +163,19 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   StreamSubscription<Position>? _positionSubscription;
   bool _didCenterOnRider = false;
 
+  // ============================================================
+  // ROUTE / NAVIGATION
+  // Route is drawn from the rider's live GPS to the current
+  // destination (sorting center before pickup, customer after).
+  // ============================================================
+
+  List<LatLng> _routePoints = [];
+  bool _isLoadingRoute = false;
+
   @override
   void initState() {
     super.initState();
-    _stageTimes[DeliveryStage.headingToSortingCenter] = DateTime.now();
+    _stageTimes[DeliveryStage.pickUpFromSorting] = DateTime.now();
     _startRiderLocationTracking();
   }
 
@@ -252,6 +261,118 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   }
 
   // ============================================================
+  // NAVIGATE (draw route on the map)
+  // ============================================================
+
+  /// Where the rider should be heading right now.
+  LatLng get _currentDestination => _status == DeliveryStage.pickUpFromSorting
+      ? _pickupLocation
+      : _customerLocation;
+
+  String get _currentDestinationName =>
+      _status == DeliveryStage.pickUpFromSorting
+      ? 'the sorting center'
+      : 'the customer';
+
+  Future<List<LatLng>?> _fetchRoadRoute(LatLng from, LatLng to) async {
+    // OSRM public demo server (free, no API key). Fine for a prototype;
+    // for production, self-host OSRM or use a paid routing provider.
+    final Uri url = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/'
+      '${from.longitude},${from.latitude};${to.longitude},${to.latitude}'
+      '?overview=full&geometries=geojson',
+    );
+
+    try {
+      final http.Response response = await http
+          .get(url)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return null;
+
+      final Map<String, dynamic> data =
+          jsonDecode(response.body) as Map<String, dynamic>;
+
+      final List<dynamic>? routes = data['routes'] as List<dynamic>?;
+      if (routes == null || routes.isEmpty) return null;
+
+      final List<dynamic> coordinates =
+          (routes.first as Map<String, dynamic>)['geometry']['coordinates']
+              as List<dynamic>;
+
+      // GeoJSON order is [lng, lat].
+      return coordinates.map<LatLng>((dynamic c) {
+        final List<dynamic> pair = c as List<dynamic>;
+        return LatLng((pair[1] as num).toDouble(), (pair[0] as num).toDouble());
+      }).toList();
+    } catch (e) {
+      debugPrint('ROUTE ERROR: $e');
+      return null;
+    }
+  }
+
+  Future<void> _navigateToDestination() async {
+    // Toggle: tapping again while a route is showing clears it.
+    if (_routePoints.isNotEmpty) {
+      setState(() {
+        _routePoints = [];
+      });
+      return;
+    }
+
+    if (_isLoadingRoute) return;
+
+    final LatLng? rider = _riderLocation;
+
+    if (rider == null) {
+      _showTopNotification(
+        'Waiting for the rider GPS location.',
+        icon: Icons.location_searching,
+      );
+      return;
+    }
+
+    final LatLng destination = _currentDestination;
+    final String destinationName = _currentDestinationName;
+
+    setState(() {
+      _isLoadingRoute = true;
+    });
+
+    List<LatLng>? route = await _fetchRoadRoute(rider, destination);
+
+    if (!mounted) return;
+
+    bool usedFallback = false;
+
+    // Fallback: straight line so the rider still has a visual guide.
+    if (route == null || route.length < 2) {
+      route = [rider, destination];
+      usedFallback = true;
+    }
+
+    setState(() {
+      _routePoints = route!;
+      _isLoadingRoute = false;
+    });
+
+    // Fit the whole route (and rider) into view.
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints([rider, ...route]),
+        padding: const EdgeInsets.all(48),
+      ),
+    );
+
+    _showTopNotification(
+      usedFallback
+          ? 'Couldn\'t load the road route. Showing a straight line to $destinationName.'
+          : 'Route to $destinationName is ready.',
+      icon: usedFallback ? Icons.warning_amber_rounded : Icons.alt_route,
+    );
+  }
+
+  // ============================================================
   // TOP NOTIFICATION OVERLAY STATE
   // ============================================================
 
@@ -265,12 +386,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   void dispose() {
     _positionSubscription?.cancel();
     _receivedByController.dispose();
-    // Previously this only called .remove() without clearing the
-    // reference. If a pending 2-second auto-dismiss Future.delayed
-    // callback (see _showTopNotification) fired after dispose, it would
-    // see the same OverlayEntry reference and call .remove() on it a
-    // second time, throwing an assertion error. Nulling it out here
-    // makes that later check a safe no-op.
+    // Null out the reference so a pending auto-dismiss callback
+    // (see _showTopNotification) becomes a safe no-op after dispose.
     _topNotificationEntry?.remove();
     _topNotificationEntry = null;
     super.dispose();
@@ -282,7 +399,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   int get _currentStepIndex {
     final DeliveryStage effectiveStage = _status == DeliveryStage.deliveryFailed
-        ? (_stageBeforeFailure ?? DeliveryStage.outForDelivery)
+        ? (_stageBeforeFailure ?? DeliveryStage.inTransit)
         : _status;
 
     final int index = _progressStages.indexOf(effectiveStage);
@@ -296,20 +413,18 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   String _customerStatusMessage() {
     switch (_status) {
-      case DeliveryStage.headingToSortingCenter:
+      case DeliveryStage.pickUpFromSorting:
         return 'Your rider is heading to the sorting center to collect your parcel.';
 
-      case DeliveryStage.parcelPickedUp:
-        return 'Your parcel is now with the rider.';
-
-      case DeliveryStage.outForDelivery:
+      case DeliveryStage.inTransit:
         return 'Your parcel is on the way to you.';
 
-      case DeliveryStage.arrivedAtDestination:
+      case DeliveryStage.arrivedAtCustomer:
         return 'Rider has arrived at your delivery location.';
 
       case DeliveryStage.delivered:
         return 'Your parcel has been delivered successfully.';
+
       case DeliveryStage.deliveryFailed:
         return 'The delivery attempt was unsuccessful. The parcel is waiting to be returned.';
     }
@@ -321,20 +436,18 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   String _riderDescription() {
     switch (_status) {
-      case DeliveryStage.headingToSortingCenter:
-        return 'Proceed to the assigned sorting center to collect the parcel.';
+      case DeliveryStage.pickUpFromSorting:
+        return 'Proceed to the assigned sorting center, verify the parcel, then confirm pickup.';
 
-      case DeliveryStage.parcelPickedUp:
-        return 'Parcel verified and collected. The customer has been notified that the parcel is now with you.';
+      case DeliveryStage.inTransit:
+        return 'Parcel collected. Proceed to the customer delivery address.';
 
-      case DeliveryStage.outForDelivery:
-        return 'Proceed to the customer delivery address.';
-
-      case DeliveryStage.arrivedAtDestination:
+      case DeliveryStage.arrivedAtCustomer:
         return 'You have arrived. Collect the COD payment, then complete the Proof of Delivery before confirming.';
 
       case DeliveryStage.delivered:
         return 'The parcel has been successfully delivered.';
+
       case DeliveryStage.deliveryFailed:
         return 'This delivery attempt was marked as failed. Tap Return Parcel to begin the return process.';
     }
@@ -346,20 +459,18 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   String _buttonText() {
     switch (_status) {
-      case DeliveryStage.headingToSortingCenter:
+      case DeliveryStage.pickUpFromSorting:
         return 'Confirm Parcel Pickup';
 
-      case DeliveryStage.parcelPickedUp:
-        return 'Start Delivery';
+      case DeliveryStage.inTransit:
+        return 'Arrived at Customer';
 
-      case DeliveryStage.outForDelivery:
-        return 'Arrived at Destination';
-
-      case DeliveryStage.arrivedAtDestination:
+      case DeliveryStage.arrivedAtCustomer:
         return 'Confirm Delivery';
 
       case DeliveryStage.delivered:
         return 'Delivery Completed';
+
       case DeliveryStage.deliveryFailed:
         return 'Return Parcel';
     }
@@ -371,20 +482,18 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   IconData _buttonIcon() {
     switch (_status) {
-      case DeliveryStage.headingToSortingCenter:
+      case DeliveryStage.pickUpFromSorting:
         return Icons.inventory_2_outlined;
 
-      case DeliveryStage.parcelPickedUp:
-        return Icons.delivery_dining;
-
-      case DeliveryStage.outForDelivery:
+      case DeliveryStage.inTransit:
         return Icons.location_on_outlined;
 
-      case DeliveryStage.arrivedAtDestination:
+      case DeliveryStage.arrivedAtCustomer:
         return Icons.verified_outlined;
 
       case DeliveryStage.delivered:
         return Icons.task_alt;
+
       case DeliveryStage.deliveryFailed:
         return Icons.assignment_return_outlined;
     }
@@ -442,6 +551,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
       // Remove this parcel from the active delivery flow and send it
       // back to the previous screen so it can be stored in Returns.
+      // No shipping fee is credited for returned parcels.
       Navigator.pop(context, {
         'status': 'returned',
         'returnedAt': returnedAt,
@@ -460,10 +570,10 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     }
 
     // ==========================================================
-    // SORTING CENTER -> CONFIRM PARCEL PICKUP
+    // PICK UP FROM SORTING CENTER -> IN TRANSIT
     // ==========================================================
 
-    if (_status == DeliveryStage.headingToSortingCenter) {
+    if (_status == DeliveryStage.pickUpFromSorting) {
       final bool confirm = await _showConfirmation(
         title: 'Confirm Parcel Pickup',
         message:
@@ -475,22 +585,26 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
       if (!confirm) return;
 
       setState(() {
-        _status = DeliveryStage.parcelPickedUp;
-        _stageTimes[DeliveryStage.parcelPickedUp] = DateTime.now();
+        _status = DeliveryStage.inTransit;
+        _stageTimes[DeliveryStage.inTransit] = DateTime.now();
+        // The destination changes from sorting center to customer,
+        // so the old route is no longer valid. Rider can tap Navigate
+        // again to get the route to the customer.
+        _routePoints = [];
       });
 
       _showTopNotification(
-        'Parcel pickup confirmed. The parcel is now with the rider.',
-        icon: Icons.inventory_2_outlined,
+        'Parcel picked up. You are now in transit to the customer.',
+        icon: Icons.delivery_dining,
       );
       return;
     }
 
     // ==========================================================
-    // ARRIVED AT DESTINATION -> CHECK POD
+    // ARRIVED AT CUSTOMER -> CHECK COD + POD
     // ==========================================================
 
-    if (_status == DeliveryStage.arrivedAtDestination) {
+    if (_status == DeliveryStage.arrivedAtCustomer) {
       if (!_codCollected) {
         _showErrorMessage(
           'Please confirm the COD payment before completing the delivery.',
@@ -528,17 +642,12 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
     setState(() {
       switch (_status) {
-        case DeliveryStage.parcelPickedUp:
-          _status = DeliveryStage.outForDelivery;
-          _stageTimes[DeliveryStage.outForDelivery] = DateTime.now();
+        case DeliveryStage.inTransit:
+          _status = DeliveryStage.arrivedAtCustomer;
+          _stageTimes[DeliveryStage.arrivedAtCustomer] = DateTime.now();
           break;
 
-        case DeliveryStage.outForDelivery:
-          _status = DeliveryStage.arrivedAtDestination;
-          _stageTimes[DeliveryStage.arrivedAtDestination] = DateTime.now();
-          break;
-
-        case DeliveryStage.arrivedAtDestination:
+        case DeliveryStage.arrivedAtCustomer:
           _status = DeliveryStage.delivered;
           _stageTimes[DeliveryStage.delivered] = DateTime.now();
           break;
@@ -567,8 +676,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   // ============================================================
 
   bool get _canMarkFailed =>
-      _status == DeliveryStage.outForDelivery ||
-      _status == DeliveryStage.arrivedAtDestination;
+      _status == DeliveryStage.inTransit ||
+      _status == DeliveryStage.arrivedAtCustomer;
 
   Future<void> _showFailedDeliveryDialog() async {
     const List<String> reasons = [
@@ -719,6 +828,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
       _failedNote = noteController.text.trim();
       _failedAt = now;
       _stageTimes[DeliveryStage.deliveryFailed] = now;
+      _routePoints = [];
     });
 
     noteController.dispose();
@@ -768,13 +878,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   // ============================================================
 
   Widget _buildDeliveryTimeline() {
-    final List<DeliveryStage> timelineStages = [
-      DeliveryStage.headingToSortingCenter,
-      DeliveryStage.parcelPickedUp,
-      DeliveryStage.outForDelivery,
-      DeliveryStage.arrivedAtDestination,
-      DeliveryStage.delivered,
-    ];
+    final List<DeliveryStage> timelineStages = _progressStages;
 
     return Container(
       width: double.infinity,
@@ -1314,6 +1418,24 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
+                    const SizedBox(height: 12),
+
+                    const Text(
+                      'Your Earnings',
+                      style: TextStyle(color: brownBeige, fontSize: 11),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    Text(
+                      '+₱${_riderShare.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: darkMaroon,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1336,6 +1458,9 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                       'receivedBy': _receivedByController.text.trim(),
                       'proofImagePath': _proofImage?.path,
                       'codCollected': _codCollected,
+                      'shippingFee': _shippingFee,
+                      'riderShare': _riderShare, // 40
+                      'logisticsShare': _logisticsShare, // 10
                     };
 
                     Navigator.pop(dialogContext);
@@ -1366,17 +1491,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   // Opens the phone dialer with the customer's number pre-filled.
   // The rider still presses the Call button in the phone app.
   //
-  // FIX: previously this went straight to launchUrl() and relied on
-  // the catch block to report failure. On Android 11+ (API 30+),
-  // launchUrl can silently return false instead of throwing when the
-  // app hasn't declared that it queries the "tel" scheme in the
-  // manifest — so the error message shown didn't reflect the real
-  // cause. This now checks canLaunchUrl() first, which distinguishes
-  // "no dialer app / not permitted to query it" from "actually failed
-  // to launch," making the message shown to the rider accurate.
-  //
-  // NOTE: this code change alone will not fix a "can't open dialer"
-  // issue caused by missing platform configuration. You also need:
+  // NOTE: you also need platform configuration for the dialer:
   //
   // Android — add to android/app/src/main/AndroidManifest.xml,
   // as a sibling of <application>, not inside it:
@@ -1473,10 +1588,6 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.sellerPickupHandoff) {
-      return _buildSellerPickupHandoff();
-    }
-
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: cream,
@@ -1516,8 +1627,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
             // ==================================================
             // MAP (fixed — always visible, never scrolls away)
             // Fits both the pickup and customer markers in view
-            // with padding, instead of centering only on pickup at
-            // a fixed zoom.
+            // with padding. Draws the route when Navigate is tapped.
             // ==================================================
 
             SizedBox(
@@ -1540,6 +1650,20 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                         'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.example.flutter_application_1',
                   ),
+
+                  // Route line (drawn under the markers).
+                  if (_routePoints.length >= 2)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _routePoints,
+                          strokeWidth: 5,
+                          color: darkMaroon,
+                          borderStrokeWidth: 2,
+                          borderColor: Colors.white,
+                        ),
+                      ],
+                    ),
 
                   MarkerLayer(
                     markers: [
@@ -1690,26 +1814,34 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
                       const SizedBox(width: 10),
 
+                      // NAVIGATE / CLEAR ROUTE
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {
-                            if (_riderLocation == null) {
-                              _showTopNotification(
-                                'Waiting for the rider GPS location.',
-                                icon: Icons.location_searching,
-                              );
-                              return;
-                            }
-
-                            _mapController.move(_riderLocation!, 16);
-
-                            _showTopNotification(
-                              'Map centered on your current location.',
-                              icon: Icons.my_location,
-                            );
-                          },
-                          icon: const Icon(Icons.navigation_outlined, size: 18),
-                          label: const Text('My Location'),
+                          onPressed: _isLoadingRoute
+                              ? null
+                              : _navigateToDestination,
+                          icon: _isLoadingRoute
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: darkMaroon,
+                                  ),
+                                )
+                              : Icon(
+                                  _routePoints.isEmpty
+                                      ? Icons.directions_outlined
+                                      : Icons.close_rounded,
+                                  size: 18,
+                                ),
+                          label: Text(
+                            _isLoadingRoute
+                                ? 'Routing...'
+                                : _routePoints.isEmpty
+                                ? 'Navigate'
+                                : 'Clear Route',
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: darkMaroon,
                             backgroundColor: Colors.white.withValues(
@@ -1782,157 +1914,6 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSellerPickupHandoff() {
-    return Scaffold(
-      backgroundColor: cream,
-      appBar: AppBar(
-        backgroundColor: cream,
-        title: const Text(
-          'Heading to Sorting Center',
-          style: TextStyle(color: darkMaroon, fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            SizedBox(
-              height: 230,
-              width: double.infinity,
-              child: FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: _pickupLocation,
-                  initialZoom: 14,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.example.flutter_application_1',
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: _pickupLocation,
-                        width: 54,
-                        height: 54,
-                        child: const Icon(
-                          Icons.warehouse_rounded,
-                          color: darkMaroon,
-                          size: 40,
-                        ),
-                      ),
-                      if (_riderLocation != null)
-                        Marker(
-                          point: _riderLocation!,
-                          width: 54,
-                          height: 54,
-                          child: const Icon(
-                            Icons.delivery_dining_rounded,
-                            color: maroon,
-                            size: 38,
-                          ),
-                        ),
-                    ],
-                  ),
-                  RichAttributionWidget(
-                    attributions: [
-                      TextSourceAttribution('OpenStreetMap contributors'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: lightBeige,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.warehouse_outlined,
-                          color: darkMaroon,
-                          size: 34,
-                        ),
-                        SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            'Seller pickup confirmed',
-                            style: TextStyle(
-                              color: darkMaroon,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  _handoffInfo('Pickup request', widget.orderNumber),
-                  _handoffInfo(
-                    'Parcels collected',
-                    '${widget.pickedUpParcelCount ?? 0}',
-                  ),
-                  _handoffInfo('Sorting center', widget.store),
-                  _handoffInfo(
-                    'Seller phone',
-                    widget.customerPhone.trim().isEmpty
-                        ? 'Not provided'
-                        : widget.customerPhone,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Proceed to the assigned sorting center with the confirmed parcels.',
-                    style: TextStyle(
-                      color: brownBeige,
-                      fontSize: 13,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _handoffInfo(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 132,
-            child: Text(
-              label,
-              style: const TextStyle(color: brownBeige, fontSize: 12),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: darkMaroon,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -2080,8 +2061,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
         _buildOrderDetails(),
 
-        if (_status == DeliveryStage.outForDelivery ||
-            _status == DeliveryStage.arrivedAtDestination ||
+        if (_status == DeliveryStage.inTransit ||
+            _status == DeliveryStage.arrivedAtCustomer ||
             _status == DeliveryStage.delivered) ...[
           const SizedBox(height: 18),
           const Text(
@@ -2096,7 +2077,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
           _buildCodPaymentCard(),
         ],
 
-        if (_status == DeliveryStage.arrivedAtDestination ||
+        if (_status == DeliveryStage.arrivedAtCustomer ||
             _status == DeliveryStage.delivered) ...[
           const SizedBox(height: 18),
           _buildProofOfDelivery(),
@@ -2106,11 +2087,10 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   }
 
   // Shows only the location relevant to what the rider is doing right
-  // now — the pickup card before the parcel is collected, then the
-  // customer card afterwards — instead of always showing both.
+  // now — the sorting center card before pickup, then the customer
+  // card afterwards — instead of always showing both.
   Widget _buildActiveLocationCard() {
-    final bool atSortingCenter =
-        _status == DeliveryStage.headingToSortingCenter;
+    final bool atSortingCenter = _status == DeliveryStage.pickUpFromSorting;
 
     if (atSortingCenter) {
       return _locationCard(
@@ -2270,7 +2250,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   Widget _buildCodPaymentCard() {
     final bool canCollect =
-        _status == DeliveryStage.arrivedAtDestination && !_codCollected;
+        _status == DeliveryStage.arrivedAtCustomer && !_codCollected;
 
     return Container(
       width: double.infinity,
@@ -2641,6 +2621,14 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
           const Divider(height: 26, color: lightBeige),
 
           _detailRow(Icons.route_outlined, 'Distance', widget.distance),
+
+          const Divider(height: 26, color: lightBeige),
+
+          _detailRow(
+            Icons.local_shipping_outlined,
+            'Shipping Fee',
+            '₱${_shippingFee.toStringAsFixed(2)}',
+          ),
 
           const Divider(height: 26, color: lightBeige),
 

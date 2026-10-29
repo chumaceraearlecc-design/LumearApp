@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_application_1/models/rider_profile.dart';
-import 'package:flutter_application_1/data/hardcoded_rider.dart';
 
 import 'personal_information_screen.dart';
 import 'vehicle_information_screen.dart';
@@ -13,6 +12,95 @@ import 'help_support_screen.dart';
 import 'rider_performance_screen.dart';
 import 'login_screen.dart';
 import 'assignment_screen.dart';
+import 'buyer_chat_list_screen.dart';
+import 'upgrade_screen.dart';
+
+// ============================================================
+// ACCOUNT DELETION (GRACE PERIOD)
+// Lipat mo to sa RiderProfile / backend kapag may API na.
+// ============================================================
+
+class AccountDeletion {
+  static const int graceDays = 15;
+
+  static DateTime? requestedAt;
+
+  static bool get isPending => requestedAt != null;
+
+  static DateTime? get deletionDate =>
+      requestedAt?.add(const Duration(days: graceDays));
+
+  static int get daysLeft {
+    if (deletionDate == null) return 0;
+    final int hours = deletionDate!.difference(DateTime.now()).inHours;
+    return (hours / 24).ceil().clamp(0, graceDays).toInt();
+  }
+
+  static String formatDate(DateTime d) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+}
+
+// ============================================================
+// PASSWORD CHANGE SERVICE
+// Placeholder logic only. Palitan mo ng totoong API call
+// (e.g. POST /rider/change-password) kapag may backend na.
+// Dapat ang SERVER ang magve-verify ng current password.
+// ============================================================
+
+enum PasswordChangeResult { success, wrongCurrentPassword, error }
+
+class PasswordService {
+  // TODO: remove this mock. Never store or compare passwords on the device.
+  static String _mockCurrentPassword = 'rider123';
+
+  static Future<PasswordChangeResult> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      // TODO: replace with real API call, e.g.
+      // final res = await http.post(
+      //   Uri.parse('$baseUrl/rider/change-password'),
+      //   headers: {'Authorization': 'Bearer $token'},
+      //   body: {
+      //     'current_password': currentPassword,
+      //     'new_password': newPassword,
+      //   },
+      // );
+      // if (res.statusCode == 200) return PasswordChangeResult.success;
+      // if (res.statusCode == 401 || res.statusCode == 403) {
+      //   return PasswordChangeResult.wrongCurrentPassword;
+      // }
+      // return PasswordChangeResult.error;
+
+      await Future.delayed(const Duration(milliseconds: 900));
+
+      if (currentPassword != _mockCurrentPassword) {
+        return PasswordChangeResult.wrongCurrentPassword;
+      }
+
+      _mockCurrentPassword = newPassword;
+      return PasswordChangeResult.success;
+    } catch (_) {
+      return PasswordChangeResult.error;
+    }
+  }
+}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -24,7 +112,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   // ============================================================
   // DESIGN SYSTEM — COLORS
-  // Matches the dashboard and parcels screens' palette and tokens.
   // ============================================================
 
   static const Color darkMaroon = Color(0xFF62191C);
@@ -68,6 +155,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _topNotificationEntry?.remove();
     super.dispose();
+  }
+
+  // ============================================
+  // RIDER DATA HELPERS
+  // ============================================
+
+  bool get _isApproved => RiderProfile.status.toLowerCase() == 'approved';
+
+  String get _displayName =>
+      RiderProfile.name.isEmpty ? 'Rider' : RiderProfile.name;
+
+  String get _displayRiderId =>
+      RiderProfile.riderId.isEmpty ? '-' : RiderProfile.riderId;
+
+  String get _vehicleSubtitle {
+    final String vehicle = RiderProfile.vehicleType.trim();
+    final String plate = RiderProfile.plateNumber.trim();
+
+    if (vehicle.isEmpty && plate.isEmpty) {
+      return 'Vehicle and plate details';
+    }
+    if (plate.isEmpty) return vehicle;
+    if (vehicle.isEmpty) return plate;
+
+    return '$vehicle • $plate';
+  }
+
+  IconData get _vehicleMenuIcon {
+    switch (RiderProfile.vehicleType.trim().toLowerCase()) {
+      case 'van':
+        return Icons.airport_shuttle_rounded;
+      case 'truck':
+        return Icons.local_shipping_rounded;
+      case 'tricycle':
+        return Icons.electric_rickshaw_outlined;
+      default:
+        return Icons.two_wheeler_rounded;
+    }
+  }
+
+  // ============================================
+  // UPGRADE
+  // ============================================
+
+  Future<void> _openUpgrade() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const UpgradeScreen()),
+    );
+
+    // Refresh so the button reflects a pending request.
+    if (mounted) setState(() {});
+  }
+
+  // ============================================
+  // BUYER CHAT
+  // ============================================
+
+  void _openBuyerChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BuyerChatListScreen()),
+    );
+  }
+
+  // ============================================
+  // CHANGE PASSWORD
+  // ============================================
+
+  Future<void> _showChangePasswordSheet() async {
+    final bool? changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => const _ChangePasswordSheet(),
+    );
+
+    if (changed == true && mounted) {
+      _showTopNotification(
+        'Password changed successfully.',
+        icon: Icons.check_circle_outline,
+        duration: const Duration(seconds: 3),
+      );
+    }
   }
 
   // ============================================
@@ -283,7 +454,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // TOP NOTIFICATION
   // ============================================
 
-  void _showTopNotification(String message, {IconData? icon}) {
+  void _showTopNotification(
+    String message, {
+    IconData? icon,
+    Duration duration = const Duration(seconds: 2),
+  }) {
     _topNotificationEntry?.remove();
     _topNotificationEntry = null;
 
@@ -352,7 +527,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     overlay.insert(entry);
 
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(duration, () {
       if (_topNotificationEntry == entry) {
         entry.remove();
 
@@ -458,6 +633,131 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // ============================================
+  // DELETE ACCOUNT
+  // ============================================
+
+  Future<void> _showDeleteAccountDialog() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: cream,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
+          contentPadding: const EdgeInsets.fromLTRB(22, 14, 22, 10),
+          actionsPadding: const EdgeInsets.fromLTRB(22, 0, 22, 18),
+          title: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: danger.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.delete_forever_rounded,
+                  color: danger,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Delete Account',
+                  style: TextStyle(
+                    color: darkMaroon,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Your account will be scheduled for deletion in '
+            '${AccountDeletion.graceDays} days.\n\n'
+            'Changed your mind? You can cancel anytime within this period '
+            'and your account will stay as it is. After '
+            '${AccountDeletion.graceDays} days, your profile, documents, and '
+            'delivery history will be permanently deleted.',
+            style: const TextStyle(
+              color: textMuted,
+              fontSize: 13.5,
+              height: 1.45,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              child: const Text(
+                'Keep Account',
+                style: TextStyle(color: textMuted, fontWeight: FontWeight.w700),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: danger,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusSm),
+                ),
+              ),
+              child: const Text(
+                'Delete',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // TODO: call backend here (e.g. POST /rider/delete-request)
+    setState(() {
+      AccountDeletion.requestedAt = DateTime.now();
+    });
+
+    _showTopNotification(
+      'Account scheduled for deletion on '
+      '${AccountDeletion.formatDate(AccountDeletion.deletionDate!)}. '
+      'You can cancel anytime before then.',
+      icon: Icons.schedule_rounded,
+      duration: const Duration(seconds: 4),
+    );
+  }
+
+  void _cancelAccountDeletion() {
+    // TODO: call backend here (e.g. POST /rider/cancel-delete-request)
+    setState(() {
+      AccountDeletion.requestedAt = null;
+    });
+
+    _showTopNotification(
+      'Account deletion cancelled. Welcome back!',
+      icon: Icons.check_circle_outline,
+      duration: const Duration(seconds: 3),
+    );
+  }
+
+  // ============================================
   // BUILD
   // ============================================
 
@@ -491,27 +791,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
 
-                    Container(
-                      decoration: BoxDecoration(
-                        color: surface,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: shadowSoft,
-                      ),
-                      child: IconButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const AppSettingsScreen(),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // UPGRADE BUTTON
+                        _upgradeButton(),
+
+                        const SizedBox(width: 10),
+
+                        // SETTINGS BUTTON
+                        Container(
+                          decoration: BoxDecoration(
+                            color: surface,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: shadowSoft,
+                          ),
+                          child: IconButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const AppSettingsScreen(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.settings_outlined,
+                              color: darkMaroon,
+                              size: 22,
                             ),
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.settings_outlined,
-                          color: darkMaroon,
-                          size: 22,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -654,25 +966,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 2),
 
                       GestureDetector(
-                        onTap: () {
-                          Navigator.push(
+                        onTap: () async {
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) =>
                                   const PersonalInformationScreen(),
                             ),
                           );
+                          // Refresh name / ID after possible edits.
+                          if (mounted) setState(() {});
                         },
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              HardcodedRider.fullName,
-                              style: const TextStyle(
-                                fontSize: 21,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: -0.3,
+                            Flexible(
+                              child: Text(
+                                _displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: -0.3,
+                                ),
                               ),
                             ),
 
@@ -690,7 +1008,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 4),
 
                       Text(
-                        'Rider ID: ${HardcodedRider.riderId}',
+                        'Rider ID: $_displayRiderId',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: Colors.white.withValues(alpha: 0.75),
@@ -781,7 +1099,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 20),
 
               // ============================================
-              // VERIFIED RIDER
+              // VERIFIED / PENDING RIDER
               // ============================================
               _EntranceAnimation(
                 delay: 190,
@@ -817,8 +1135,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               color: const Color(0xFF873632),
                               borderRadius: BorderRadius.circular(13),
                             ),
-                            child: const Icon(
-                              Icons.verified_rounded,
+                            child: Icon(
+                              _isApproved
+                                  ? Icons.verified_rounded
+                                  : Icons.hourglass_top_rounded,
                               color: Colors.white,
                               size: 20,
                             ),
@@ -826,24 +1146,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                           const SizedBox(width: 14),
 
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Verified Rider',
-                                  style: TextStyle(
+                                  _isApproved
+                                      ? 'Verified Rider'
+                                      : 'Pending Verification',
+                                  style: const TextStyle(
                                     fontSize: 15.5,
                                     fontWeight: FontWeight.w800,
                                     color: darkMaroon,
                                   ),
                                 ),
 
-                                SizedBox(height: 3),
+                                const SizedBox(height: 3),
 
                                 Text(
-                                  'Your rider account has been verified.',
-                                  style: TextStyle(
+                                  _isApproved
+                                      ? 'Your rider account has been verified.'
+                                      : 'Your documents are under review by the admin.',
+                                  style: const TextStyle(
                                     fontSize: 12,
                                     color: textMuted,
                                   ),
@@ -1001,13 +1325,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: Icons.person_rounded,
                   title: 'Personal Information',
                   subtitle: 'Name, contact number, and address',
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const PersonalInformationScreen(),
                       ),
                     );
+                    if (mounted) setState(() {});
                   },
                 ),
               ),
@@ -1015,16 +1340,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _EntranceAnimation(
                 delay: 320,
                 child: _profileMenu(
-                  icon: Icons.two_wheeler_rounded,
+                  icon: _vehicleMenuIcon,
                   title: 'Vehicle Information',
-                  subtitle: 'Motorcycle and plate details',
-                  onTap: () {
-                    Navigator.push(
+                  subtitle: _vehicleSubtitle,
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const VehicleInformationScreen(),
                       ),
                     );
+                    if (mounted) setState(() {});
                   },
                 ),
               ),
@@ -1043,6 +1369,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     );
                   },
+                ),
+              ),
+
+              // ============================================
+              // CHANGE PASSWORD
+              // ============================================
+              _EntranceAnimation(
+                delay: 400,
+                child: _profileMenu(
+                  icon: Icons.lock_reset_rounded,
+                  title: 'Change Password',
+                  subtitle: 'Update your account password',
+                  onTap: _showChangePasswordSheet,
                 ),
               ),
 
@@ -1093,6 +1432,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
 
               _EntranceAnimation(
+                delay: 540,
+                child: _profileMenu(
+                  icon: Icons.forum_rounded,
+                  title: 'Buyer Chat',
+                  subtitle: 'Message your customers about their orders',
+                  onTap: _openBuyerChat,
+                ),
+              ),
+
+              _EntranceAnimation(
                 delay: 560,
                 child: _profileMenu(
                   icon: Icons.bar_chart_rounded,
@@ -1125,7 +1474,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
+              // ============================================
+              // DELETE ACCOUNT / CANCEL DELETION
+              // ============================================
+              _EntranceAnimation(
+                delay: 640,
+                child: AccountDeletion.isPending
+                    ? _profileMenu(
+                        icon: Icons.restore_rounded,
+                        title: 'Cancel Account Deletion',
+                        subtitle:
+                            'Deletes on ${AccountDeletion.formatDate(AccountDeletion.deletionDate!)} • ${AccountDeletion.daysLeft} days left',
+                        onTap: _cancelAccountDeletion,
+                      )
+                    : _profileMenu(
+                        icon: Icons.delete_forever_rounded,
+                        title: 'Delete Account',
+                        subtitle:
+                            'Permanently deleted after ${AccountDeletion.graceDays} days',
+                        onTap: _showDeleteAccountDialog,
+                        isDanger: true,
+                      ),
+              ),
+
               const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================
+  // UPGRADE BUTTON
+  // Shows "Pending" while an upgrade request is under review.
+  // ============================================
+
+  Widget _upgradeButton() {
+    final bool pending = UpgradeScreen.isPending;
+
+    return Material(
+      color: pending ? lightBeige : darkMaroon,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _openUpgrade,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                pending
+                    ? Icons.hourglass_top_rounded
+                    : Icons.workspace_premium_rounded,
+                color: pending ? darkMaroon : Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                pending ? 'Pending' : 'Upgrade',
+                style: TextStyle(
+                  color: pending ? darkMaroon : Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                ),
+              ),
             ],
           ),
         ),
@@ -1261,6 +1675,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       Text(
                         subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 11, color: textMuted),
                       ),
                     ],
@@ -1275,6 +1691,490 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CHANGE PASSWORD SHEET
+// Requires the current password before setting a new one.
+// Pops with `true` when the password was changed successfully.
+// ============================================================
+
+class _ChangePasswordSheet extends StatefulWidget {
+  const _ChangePasswordSheet();
+
+  @override
+  State<_ChangePasswordSheet> createState() => _ChangePasswordSheetState();
+}
+
+class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
+  static const Color _darkMaroon = _ProfileScreenState.darkMaroon;
+  static const Color _brownBeige = _ProfileScreenState.brownBeige;
+  static const Color _cream = _ProfileScreenState.cream;
+  static const Color _surface = _ProfileScreenState.surface;
+  static const Color _textMuted = _ProfileScreenState.textMuted;
+  static const Color _danger = _ProfileScreenState.danger;
+
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  final TextEditingController _currentController = TextEditingController();
+  final TextEditingController _newController = TextEditingController();
+  final TextEditingController _confirmController = TextEditingController();
+
+  bool _showCurrent = false;
+  bool _showNew = false;
+  bool _showConfirm = false;
+
+  bool _isSaving = false;
+
+  // Error returned by the server when the current password is wrong.
+  String? _currentServerError;
+
+  // Error shown when something else fails (network, server error...).
+  String? _generalError;
+
+  @override
+  void dispose() {
+    _currentController.dispose();
+    _newController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  // ============================================
+  // VALIDATORS
+  // ============================================
+
+  String? _validateCurrent(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Enter your current password.';
+    }
+    if (_currentServerError != null) {
+      return _currentServerError;
+    }
+    return null;
+  }
+
+  String? _validateNew(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Enter a new password.';
+    }
+    if (value.length < 8) {
+      return 'Password must be at least 8 characters.';
+    }
+    if (!RegExp(r'[A-Za-z]').hasMatch(value) ||
+        !RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Use both letters and numbers.';
+    }
+    if (value == _currentController.text) {
+      return 'New password must be different from the current one.';
+    }
+    return null;
+  }
+
+  String? _validateConfirm(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Confirm your new password.';
+    }
+    if (value != _newController.text) {
+      return 'Passwords do not match.';
+    }
+    return null;
+  }
+
+  // ============================================
+  // SUBMIT
+  // ============================================
+
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _currentServerError = null;
+      _generalError = null;
+    });
+
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    final PasswordChangeResult result = await PasswordService.changePassword(
+      currentPassword: _currentController.text,
+      newPassword: _newController.text,
+    );
+
+    if (!mounted) return;
+
+    switch (result) {
+      case PasswordChangeResult.success:
+        Navigator.pop(context, true);
+        return;
+
+      case PasswordChangeResult.wrongCurrentPassword:
+        setState(() {
+          _isSaving = false;
+          _currentServerError = 'Current password is incorrect.';
+        });
+        _formKey.currentState?.validate();
+        return;
+
+      case PasswordChangeResult.error:
+        setState(() {
+          _isSaving = false;
+          _generalError = 'Something went wrong. Please try again.';
+        });
+        return;
+    }
+  }
+
+  // ============================================
+  // UI
+  // ============================================
+
+  @override
+  Widget build(BuildContext context) {
+    final double keyboard = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: _cream,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _brownBeige.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _darkMaroon,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.lock_reset_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Change Password',
+                          style: TextStyle(
+                            color: _darkMaroon,
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  const Text(
+                    'For your security, enter your current password first.',
+                    style: TextStyle(
+                      color: _textMuted,
+                      fontSize: 12.5,
+                      height: 1.4,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // CURRENT PASSWORD
+                  _passwordField(
+                    controller: _currentController,
+                    label: 'Current Password',
+                    obscure: !_showCurrent,
+                    onToggle: () =>
+                        setState(() => _showCurrent = !_showCurrent),
+                    validator: _validateCurrent,
+                    textInputAction: TextInputAction.next,
+                    onChanged: (_) {
+                      if (_currentServerError != null ||
+                          _generalError != null) {
+                        setState(() {
+                          _currentServerError = null;
+                          _generalError = null;
+                        });
+                      }
+                    },
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // NEW PASSWORD
+                  _passwordField(
+                    controller: _newController,
+                    label: 'New Password',
+                    obscure: !_showNew,
+                    onToggle: () => setState(() => _showNew = !_showNew),
+                    validator: _validateNew,
+                    textInputAction: TextInputAction.next,
+                    onChanged: (_) => setState(() {}),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  _requirementsHint(),
+
+                  const SizedBox(height: 14),
+
+                  // CONFIRM PASSWORD
+                  _passwordField(
+                    controller: _confirmController,
+                    label: 'Confirm New Password',
+                    obscure: !_showConfirm,
+                    onToggle: () =>
+                        setState(() => _showConfirm = !_showConfirm),
+                    validator: _validateConfirm,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _isSaving ? null : _submit(),
+                  ),
+
+                  if (_generalError != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: _danger,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _generalError!,
+                            style: const TextStyle(
+                              color: _danger,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: _isSaving
+                              ? null
+                              : () => Navigator.pop(context, false),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                _ProfileScreenState.radiusSm,
+                              ),
+                            ),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(
+                              color: _textMuted,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _isSaving ? null : _submit,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _darkMaroon,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: _darkMaroon.withValues(
+                              alpha: 0.6,
+                            ),
+                            disabledForegroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                _ProfileScreenState.radiusSm,
+                              ),
+                            ),
+                          ),
+                          child: _isSaving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Update Password',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================
+  // PASSWORD REQUIREMENTS HINT
+  // ============================================
+
+  Widget _requirementsHint() {
+    final String value = _newController.text;
+
+    final bool hasLength = value.length >= 8;
+    final bool hasMix =
+        RegExp(r'[A-Za-z]').hasMatch(value) && RegExp(r'[0-9]').hasMatch(value);
+
+    Widget item(bool ok, String text) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 3),
+        child: Row(
+          children: [
+            Icon(
+              ok ? Icons.check_circle_rounded : Icons.circle_outlined,
+              size: 14,
+              color: ok ? _ProfileScreenState.success : _textMuted,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: ok ? _ProfileScreenState.success : _textMuted,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        item(hasLength, 'At least 8 characters'),
+        item(hasMix, 'Contains letters and numbers'),
+      ],
+    );
+  }
+
+  // ============================================
+  // PASSWORD FIELD
+  // ============================================
+
+  Widget _passwordField({
+    required TextEditingController controller,
+    required String label,
+    required bool obscure,
+    required VoidCallback onToggle,
+    required String? Function(String?) validator,
+    TextInputAction textInputAction = TextInputAction.next,
+    ValueChanged<String>? onChanged,
+    ValueChanged<String>? onSubmitted,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) {
+      return OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_ProfileScreenState.radiusMd),
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
+
+    return TextFormField(
+      controller: controller,
+      obscureText: obscure,
+      enabled: !_isSaving,
+      enableSuggestions: false,
+      autocorrect: false,
+      textInputAction: textInputAction,
+      onChanged: onChanged,
+      onFieldSubmitted: onSubmitted,
+      validator: validator,
+      style: const TextStyle(
+        color: _darkMaroon,
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: _textMuted, fontSize: 13.5),
+        floatingLabelStyle: const TextStyle(
+          color: _darkMaroon,
+          fontWeight: FontWeight.w700,
+        ),
+        filled: true,
+        fillColor: _surface,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        prefixIcon: const Icon(
+          Icons.lock_outline_rounded,
+          color: _darkMaroon,
+          size: 20,
+        ),
+        suffixIcon: IconButton(
+          onPressed: onToggle,
+          icon: Icon(
+            obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            color: _textMuted,
+            size: 20,
+          ),
+        ),
+        errorMaxLines: 2,
+        errorStyle: const TextStyle(
+          color: _danger,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+        ),
+        enabledBorder: border(_darkMaroon.withValues(alpha: 0.10)),
+        disabledBorder: border(_darkMaroon.withValues(alpha: 0.06)),
+        focusedBorder: border(_darkMaroon, 1.6),
+        errorBorder: border(_danger),
+        focusedErrorBorder: border(_danger, 1.6),
       ),
     );
   }

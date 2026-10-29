@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/rider_profile.dart';
 
 import 'dashboard_screen.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
-import 'hub_transfer_dashboard_screen.dart';
+import 'truck/truck_dashboard_screen.dart';
+import 'van/van_rider_dashboard_screen.dart';
+
+import 'package:flutter_application_1/models/rider_profile.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,7 +23,6 @@ class _LoginScreenState extends State<LoginScreen>
   // ============================================================
 
   final TextEditingController _emailController = TextEditingController();
-
   final TextEditingController _passwordController = TextEditingController();
 
   // ============================================================
@@ -41,10 +42,7 @@ class _LoginScreenState extends State<LoginScreen>
   static const Color maroon = Color(0xFF873632);
   static const Color brownBeige = Color(0xFF9E7161);
   static const Color cream = Color(0xFFE0CFC2);
-
-  // Success color
   static const Color successColor = Color(0xFFB88A5A);
-
   static const Color smokeGray = Color.fromARGB(255, 255, 254, 254);
 
   // ============================================================
@@ -70,15 +68,13 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _smokeController.dispose();
-
     _emailController.dispose();
     _passwordController.dispose();
-
     super.dispose();
   }
 
   // ============================================================
-  // LOGIN
+  // NORMALIZE VEHICLE TYPE
   // ============================================================
 
   String? _canonicalVehicleType(String value) {
@@ -89,34 +85,54 @@ class _LoginScreenState extends State<LoginScreen>
 
     return switch (normalized) {
       'motorcycle' || 'motorbike' => 'Motorcycle',
+      'tricycle' => 'Tricycle',
       'truck' => 'Truck',
       'van' => 'Van',
       _ => null,
     };
   }
 
+  // ============================================================
+  // SHOW MESSAGE
+  // ============================================================
+
+  void _showLoginMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: darkMaroon,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  // ============================================================
+  // LOGIN
+  // ============================================================
+
   Future<void> _login() async {
-    // Close keyboard
     FocusScope.of(context).unfocus();
 
-    // Prevent multiple taps
-    if (_isLoggingIn || _loginSuccess) {
+    if (_isLoggingIn || _loginSuccess) return;
+
+    final String email = _emailController.text.trim().toLowerCase();
+    final String password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Please enter your email and password.');
       return;
     }
 
-    final String email = _emailController.text.trim();
-    final String password = _passwordController.text.trim();
+    // ============================================================
+    // ADMIN LOGIN (DEMO ONLY)
+    // ============================================================
 
-    // ============================================================
-    // ADMIN LOGIN
-    // ============================================================
     if (email == 'lumear@gmail.com' && password == 'adminOne') {
-      setState(() {
-        _isLoggingIn = true;
-      });
+      setState(() => _isLoggingIn = true);
 
-      await Future.delayed(const Duration(milliseconds: 900));
-
+      await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
 
       setState(() {
@@ -124,91 +140,81 @@ class _LoginScreenState extends State<LoginScreen>
         _loginSuccess = true;
       });
 
-      await Future.delayed(const Duration(milliseconds: 650));
-
+      await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
-      );
-
-      return;
-    }
-
-    final String? vehicleType = _canonicalVehicleType(RiderProfile.vehicleType);
-    if (vehicleType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please select a supported vehicle in Sign Up before logging in.',
-          ),
-          backgroundColor: darkMaroon,
-        ),
+        MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
       );
       return;
     }
 
     // ============================================================
-    // EXISTING RIDER LOGIN CODE
+    // RIDER LOGIN (LOCAL ONLY)
+    // The server API was removed. The rider is matched against the
+    // profile saved on this device during sign up (RiderProfile).
     // ============================================================
-
-    // Dito na tuloy yung dati mong rider validation/login.
-
-    // ==========================================================
-    // START LOADING
-    // ==========================================================
 
     setState(() {
       _isLoggingIn = true;
       _loginSuccess = false;
     });
 
-    // ==========================================================
-    // TESTING MODE
-    //
-    // Wala pang backend validation.
-    // For now:
-    //
-    // Login
-    // ↓
-    // Loading
-    // ↓
-    // Check
-    // ↓
-    // Dashboard
-    //
-    // ==========================================================
-
-    await Future.delayed(const Duration(milliseconds: 1400));
-
+    await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
-    // ==========================================================
-    // SHOW SUCCESS CHECK
-    // ==========================================================
+    final String savedEmail = RiderProfile.email
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    if (savedEmail.isEmpty || savedEmail != email) {
+      setState(() => _isLoggingIn = false);
+      _showLoginMessage(
+        'No rider account found on this device. Please sign up first.',
+      );
+      return;
+    }
+
+    final String? vehicleType = _canonicalVehicleType(
+      RiderProfile.vehicleType.toString(),
+    );
+
+    final String jobType = RiderProfile.jobType.toString().trim().toLowerCase();
+
+    if (vehicleType == null) {
+      setState(() => _isLoggingIn = false);
+      _showLoginMessage('Unsupported vehicle type for this account.');
+      return;
+    }
 
     setState(() {
       _isLoggingIn = false;
       _loginSuccess = true;
     });
 
-    // Keep check visible
-    await Future.delayed(const Duration(milliseconds: 900));
-
+    await Future.delayed(const Duration(milliseconds: 650));
     if (!mounted) return;
 
-    // ==========================================================
-    // GO TO DASHBOARD
-    // ==========================================================
+    // ============================================================
+    // GO TO DASHBOARD BASED ON VEHICLE TYPE AND JOB
+    // ============================================================
+
+    final Widget destination = switch (vehicleType) {
+      'Motorcycle' => const DashboardScreen(),
+      'Tricycle' => const DashboardScreen(),
+      'Van' when jobType == 'delivery' => const DashboardScreen(),
+      'Van' when jobType == 'seller pickup' || jobType == 'pickup' =>
+        const VanRiderDashboardScreen(),
+      'Truck' when jobType == 'delivery' => const DashboardScreen(),
+      'Truck' => const TruckDashboardScreen(),
+      _ => const DashboardScreen(),
+    };
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => vehicleType == 'Motorcycle'
-            ? const DashboardScreen()
-            : const HubTransferDashboardScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => destination),
     );
   }
 
@@ -217,8 +223,6 @@ class _LoginScreenState extends State<LoginScreen>
   // ============================================================
 
   Widget _buildLoginButton() {
-    // Kapag loading or success:
-    // liliit at magiging circle ang button.
     final bool compact = _isLoggingIn || _loginSuccess;
 
     return Center(
@@ -249,19 +253,13 @@ class _LoginScreenState extends State<LoginScreen>
             child: Center(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
-
                 transitionBuilder: (Widget child, Animation<double> animation) {
                   return ScaleTransition(
                     scale: animation,
                     child: FadeTransition(opacity: animation, child: child),
                   );
                 },
-
-                // =================================================
-                // CONTENT OF BUTTON
-                // =================================================
                 child: _isLoggingIn
-                    // Loading spinner
                     ? const SizedBox(
                         key: ValueKey('loading'),
                         width: 27,
@@ -271,7 +269,6 @@ class _LoginScreenState extends State<LoginScreen>
                           color: Colors.white,
                         ),
                       )
-                    // Success check
                     : _loginSuccess
                     ? const Icon(
                         Icons.check_rounded,
@@ -279,7 +276,6 @@ class _LoginScreenState extends State<LoginScreen>
                         color: Colors.white,
                         size: 34,
                       )
-                    // Normal login
                     : const Text(
                         'Log In',
                         key: ValueKey('normal'),
@@ -298,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   // ============================================================
-  // SMOKE PROGRESS
+  // SMOKE ANIMATION HELPERS
   // ============================================================
 
   double _smokeProgress(double value, double delay) {
@@ -311,10 +307,6 @@ class _LoginScreenState extends State<LoginScreen>
     return progress;
   }
 
-  // ============================================================
-  // BUILD SMOKE
-  // ============================================================
-
   Widget _buildSmoke({
     required double progress,
     required double startX,
@@ -322,11 +314,8 @@ class _LoginScreenState extends State<LoginScreen>
     required double size,
   }) {
     final double x = startX - (progress * 45);
-
     final double y = startY - (progress * 15);
-
     final double currentSize = size + (progress * 12);
-
     final double opacity = (1 - progress).clamp(0.0, 1.0);
 
     return Positioned(
@@ -354,39 +343,29 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   // ============================================================
-  // BUILD
+  // BUILD LOGIN SCREEN
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: cream,
-
       body: Stack(
         children: [
-          // ======================================================
-          // BACKGROUND WAVES
-          // ======================================================
-
           const Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(painter: _LoginDecorPainter()),
             ),
           ),
-
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
-
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   const SizedBox(height: 5),
 
-                  // ==================================================
                   // LUMEAR BRANDING
-                  // ==================================================
                   Center(
                     child: Column(
                       children: [
@@ -399,19 +378,15 @@ class _LoginScreenState extends State<LoginScreen>
                             letterSpacing: 6,
                           ),
                         ),
-
                         const SizedBox(height: 3),
-
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-
                           children: [
                             Container(
                               width: 25,
                               height: 1,
                               color: brownBeige.withValues(alpha: 0.65),
                             ),
-
                             const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 8),
                               child: Text(
@@ -424,7 +399,6 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ),
                             ),
-
                             Container(
                               width: 25,
                               height: 1,
@@ -438,40 +412,27 @@ class _LoginScreenState extends State<LoginScreen>
 
                   const SizedBox(height: 20),
 
-                  // ==================================================
-                  // LOGO + SMOKE
-                  // ==================================================
+                  // LOGO AND SMOKE
                   Transform.translate(
                     offset: const Offset(-25, 0),
-
                     child: Center(
                       child: SizedBox(
                         width: 260,
                         height: 200,
-
                         child: Stack(
                           clipBehavior: Clip.none,
-
                           children: [
-                            // ==========================================
-                            // SMOKE
-                            // ==========================================
-
                             Positioned(
                               left: 5,
                               bottom: 38,
-
                               child: SizedBox(
                                 width: 100,
                                 height: 70,
-
                                 child: AnimatedBuilder(
                                   animation: _smokeController,
-
                                   builder: (context, child) {
                                     return Stack(
                                       clipBehavior: Clip.none,
-
                                       children: [
                                         _buildSmoke(
                                           progress: _smokeProgress(
@@ -482,7 +443,6 @@ class _LoginScreenState extends State<LoginScreen>
                                           startY: 35,
                                           size: 9,
                                         ),
-
                                         _buildSmoke(
                                           progress: _smokeProgress(
                                             _smokeController.value,
@@ -492,7 +452,6 @@ class _LoginScreenState extends State<LoginScreen>
                                           startY: 35,
                                           size: 12,
                                         ),
-
                                         _buildSmoke(
                                           progress: _smokeProgress(
                                             _smokeController.value,
@@ -502,7 +461,6 @@ class _LoginScreenState extends State<LoginScreen>
                                           startY: 35,
                                           size: 8,
                                         ),
-
                                         _buildSmoke(
                                           progress: _smokeProgress(
                                             _smokeController.value,
@@ -518,10 +476,6 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ),
                             ),
-
-                            // ==========================================
-                            // LOGO
-                            // ==========================================
                             Center(
                               child: Image.asset(
                                 'assets/images/logo.png',
@@ -538,9 +492,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                   const SizedBox(height: 40),
 
-                  // ==================================================
                   // TITLE
-                  // ==================================================
                   const Center(
                     child: Text(
                       'Welcome Back!',
@@ -551,9 +503,7 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   const Center(
                     child: Text(
                       'Login to continue your deliveries',
@@ -563,44 +513,30 @@ class _LoginScreenState extends State<LoginScreen>
 
                   const SizedBox(height: 20),
 
-                  // ==================================================
                   // EMAIL
-                  // ==================================================
                   TextField(
                     controller: _emailController,
-
                     enabled: !_isLoggingIn && !_loginSuccess,
-
                     keyboardType: TextInputType.emailAddress,
-
                     textInputAction: TextInputAction.next,
-
                     autocorrect: false,
-
                     enableSuggestions: false,
-
                     decoration: InputDecoration(
                       hintText: 'Enter your email',
-
                       prefixIcon: const Icon(
                         Icons.email_outlined,
                         color: maroon,
                       ),
-
                       filled: true,
-
                       fillColor: Colors.white.withValues(alpha: 0.65),
-
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(15),
                         borderSide: BorderSide.none,
                       ),
-
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(15),
                         borderSide: BorderSide.none,
                       ),
-
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(15),
                         borderSide: const BorderSide(color: maroon, width: 2),
@@ -610,29 +546,20 @@ class _LoginScreenState extends State<LoginScreen>
 
                   const SizedBox(height: 20),
 
-                  // ==================================================
                   // PASSWORD
-                  // ==================================================
                   TextField(
                     controller: _passwordController,
-
                     enabled: !_isLoggingIn && !_loginSuccess,
-
                     obscureText: _obscurePassword,
-
                     textInputAction: TextInputAction.done,
-
                     onSubmitted: (_) {
                       if (!_isLoggingIn && !_loginSuccess) {
                         _login();
                       }
                     },
-
                     decoration: InputDecoration(
                       hintText: 'Enter your password',
-
                       prefixIcon: const Icon(Icons.lock_outline, color: maroon),
-
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
@@ -640,7 +567,6 @@ class _LoginScreenState extends State<LoginScreen>
                               : Icons.visibility_outlined,
                           color: maroon,
                         ),
-
                         onPressed: _isLoggingIn || _loginSuccess
                             ? null
                             : () {
@@ -649,21 +575,16 @@ class _LoginScreenState extends State<LoginScreen>
                                 });
                               },
                       ),
-
                       filled: true,
-
                       fillColor: Colors.white.withValues(alpha: 0.65),
-
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(15),
                         borderSide: BorderSide.none,
                       ),
-
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(15),
                         borderSide: BorderSide.none,
                       ),
-
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(15),
                         borderSide: const BorderSide(color: maroon, width: 2),
@@ -673,34 +594,24 @@ class _LoginScreenState extends State<LoginScreen>
 
                   const SizedBox(height: 10),
 
-                  // ==================================================
-                  // REMEMBER ME + FORGOT PASSWORD
-                  // ==================================================
+                  // REMEMBER ME AND FORGOT PASSWORD
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
                     children: [
                       Row(
                         mainAxisSize: MainAxisSize.min,
-
                         children: [
                           SizedBox(
                             width: 24,
                             height: 24,
-
                             child: Checkbox(
                               value: _rememberMe,
-
                               activeColor: darkMaroon,
-
                               checkColor: Colors.white,
-
                               side: const BorderSide(color: maroon, width: 1.5),
-
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(4),
                               ),
-
                               onChanged: _isLoggingIn || _loginSuccess
                                   ? null
                                   : (value) {
@@ -710,9 +621,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     },
                             ),
                           ),
-
                           const SizedBox(width: 7),
-
                           const Text(
                             'Remember Me',
                             style: TextStyle(
@@ -723,7 +632,6 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
                         ],
                       ),
-
                       TextButton(
                         onPressed: _isLoggingIn || _loginSuccess
                             ? null
@@ -736,7 +644,6 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                 );
                               },
-
                         child: const Text(
                           'Forgot Password?',
                           style: TextStyle(
@@ -751,25 +658,19 @@ class _LoginScreenState extends State<LoginScreen>
 
                   const SizedBox(height: 20),
 
-                  // ==================================================
-                  // ANIMATED LOGIN BUTTON
-                  // ==================================================
+                  // LOGIN BUTTON
                   _buildLoginButton(),
 
                   const SizedBox(height: 30),
 
-                  // ==================================================
                   // SIGN UP
-                  // ==================================================
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-
                     children: [
                       const Text(
                         "Don't have an account?",
                         style: TextStyle(color: brownBeige),
                       ),
-
                       TextButton(
                         onPressed: _isLoggingIn || _loginSuccess
                             ? null
@@ -781,7 +682,6 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                 );
                               },
-
                         child: const Text(
                           'Sign Up',
                           style: TextStyle(
@@ -825,10 +725,6 @@ class _LoginDecorPainter extends CustomPainter {
       ..strokeWidth = 2.2
       ..strokeCap = StrokeCap.round;
 
-    // ============================================================
-    // BOTTOM BACK WAVE
-    // ============================================================
-
     final backWave = Path()
       ..moveTo(0, size.height * 0.88)
       ..cubicTo(
@@ -852,10 +748,6 @@ class _LoginDecorPainter extends CustomPainter {
       ..close();
 
     canvas.drawPath(backWave, backWavePaint);
-
-    // ============================================================
-    // BOTTOM FRONT WAVE
-    // ============================================================
 
     final frontWave = Path()
       ..moveTo(0, size.height * 0.92)
@@ -881,10 +773,6 @@ class _LoginDecorPainter extends CustomPainter {
 
     canvas.drawPath(frontWave, frontWavePaint);
 
-    // ============================================================
-    // LEFT TOP CURVE
-    // ============================================================
-
     final leftTopCurve = Path()
       ..moveTo(0, size.height * 0.18)
       ..cubicTo(
@@ -897,10 +785,6 @@ class _LoginDecorPainter extends CustomPainter {
       );
 
     canvas.drawPath(leftTopCurve, sideLinePaint);
-
-    // ============================================================
-    // LEFT MIDDLE CURVE
-    // ============================================================
 
     final leftMidCurve = Path()
       ..moveTo(0, size.height * 0.55)
@@ -915,10 +799,6 @@ class _LoginDecorPainter extends CustomPainter {
 
     canvas.drawPath(leftMidCurve, sideLinePaint);
 
-    // ============================================================
-    // RIGHT TOP CURVE
-    // ============================================================
-
     final rightTopCurve = Path()
       ..moveTo(size.width, size.height * 0.27)
       ..cubicTo(
@@ -931,10 +811,6 @@ class _LoginDecorPainter extends CustomPainter {
       );
 
     canvas.drawPath(rightTopCurve, sideLinePaint);
-
-    // ============================================================
-    // RIGHT MIDDLE CURVE
-    // ============================================================
 
     final rightMidCurve = Path()
       ..moveTo(size.width, size.height * 0.68)

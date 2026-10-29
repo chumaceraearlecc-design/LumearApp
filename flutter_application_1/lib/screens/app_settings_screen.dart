@@ -183,16 +183,13 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             Navigator.pop(context);
           },
 
-          icon: const Icon(Icons.arrow_back, color: primaryText),
+          icon: Icon(Icons.arrow_back, color: primaryText),
         ),
 
         title: Text(
           tr(english: 'App Settings', filipino: 'Mga Setting ng App'),
 
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: primaryText,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, color: primaryText),
         ),
       ),
 
@@ -220,17 +217,17 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
               child: Column(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 42,
 
-                    backgroundColor: lightBeige,
+                    backgroundColor: accentColor,
 
                     child: Icon(
                       Icons.settings_outlined,
 
                       size: 44,
 
-                      color: darkMaroon,
+                      color: primaryText,
                     ),
                   ),
 
@@ -259,7 +256,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
                     textAlign: TextAlign.center,
 
-                    style: const TextStyle(fontSize: 13, color: lightBeige),
+                    style: TextStyle(fontSize: 13, color: lightBeige),
                   ),
                 ],
               ),
@@ -273,7 +270,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             Text(
               tr(english: 'Notifications', filipino: 'Mga Abiso'),
 
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
 
                 fontWeight: FontWeight.bold,
@@ -350,7 +347,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             Text(
               tr(english: 'App Preferences', filipino: 'Mga Kagustuhan sa App'),
 
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
 
                 fontWeight: FontWeight.bold,
@@ -401,7 +398,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
             Text(
               tr(english: 'Language', filipino: 'Wika'),
 
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
 
                 fontWeight: FontWeight.bold,
@@ -435,7 +432,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       borderRadius: BorderRadius.circular(13),
                     ),
 
-                    child: const Icon(Icons.language, color: primaryText),
+                    child: Icon(Icons.language, color: primaryText),
                   ),
 
                   const SizedBox(width: 14),
@@ -447,9 +444,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
                         isExpanded: true,
 
-                        dropdownColor: Colors.white,
+                        dropdownColor: cardColor,
 
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: primaryText,
 
                           fontWeight: FontWeight.w600,
@@ -457,7 +454,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                           fontSize: 14,
                         ),
 
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.keyboard_arrow_down,
 
                           color: primaryText,
@@ -511,7 +508,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
-                  const Icon(Icons.info_outline, color: primaryText),
+                  Icon(Icons.info_outline, color: primaryText),
 
                   const SizedBox(width: 12),
 
@@ -523,7 +520,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                         filipino: 'Para sa testing: kapag in-on ang Delivery Notifications, isang beses tutunog ang delivery sound. Kapag in-on ang Notification Sound, isang beses tutunog ang normal sound.',
                       ),
 
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
 
                         height: 1.45,
@@ -584,7 +581,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
         activeThumbColor: darkMaroon,
 
-        activeTrackColor: lightBeige,
+        activeTrackColor: accentColor,
 
         secondary: Container(
           width: 45,

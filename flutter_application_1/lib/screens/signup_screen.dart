@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/models/rider_profile.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
-import 'login_screen.dart';
+import 'login_screen.dart' hide RiderProfile;
 import 'terms_conditions_screen.dart';
 
 class _PhLocalNumberFormatter extends TextInputFormatter {
@@ -36,6 +37,45 @@ class _PhLocalNumberFormatter extends TextInputFormatter {
   }
 }
 
+// ============================================================
+// NAME INPUT FORMATTER
+//
+// Only letters (including accented ones such as ñ), spaces,
+// apostrophes, hyphens and periods are allowed. Numbers and other
+// symbols are removed as the user types or pastes, and leading or
+// double spaces are cleaned up automatically.
+// ============================================================
+class _NameInputFormatter extends TextInputFormatter {
+  static final RegExp _allowedChar = RegExp(r"[A-Za-zÀ-ÖØ-öø-ÿ .'\-]");
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String text = newValue.text
+        .split('')
+        .where((char) => _allowedChar.hasMatch(char))
+        .join();
+
+    // No leading space and no double spaces.
+    text = text.replaceFirst(RegExp(r'^\s+'), '');
+    text = text.replaceAll(RegExp(r'\s{2,}'), ' ');
+
+    if (text == newValue.text) {
+      return newValue;
+    }
+
+    final int removed = newValue.text.length - text.length;
+    final int offset = (newValue.selection.end - removed).clamp(0, text.length);
+
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: offset),
+    );
+  }
+}
+
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
 
@@ -51,7 +91,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isLoading = false;
   bool _agreeToTerms = false;
 
-  final TextEditingController _fullNameController = TextEditingController();
+  // ============================================================
+  // NAME FIELDS (first, middle, last)
+  // ============================================================
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _middleNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
@@ -69,10 +115,75 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   DateTime? _selectedBirthday;
 
+  // ============================================================
+  // NAME VALIDATION
+  //
+  // Accepted : Juan, Maria Clara, Dela Cruz, O'Brien, Ana-Lyn, Cruz Jr.
+  //            S, S. (middle initial only)
+  // Rejected : Juan2, 123, Juan_, anything with digits or symbols
+  // ============================================================
+  static final RegExp _nameRegex = RegExp(
+    r"^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '.\-]+[A-Za-zÀ-ÖØ-öø-ÿ]+)*\.?$",
+  );
+
+  // A single letter with an optional dot, e.g. "S" or "S.".
+  static final RegExp _initialRegex = RegExp(r'^[A-Za-zÀ-ÖØ-öø-ÿ]\.?$');
+
+  /// Full name built from the three name fields, e.g. "Juan Santos Dela Cruz".
+  /// A one-letter middle name is shown as an initial with a dot ("S.").
+  String get _fullName {
+    final String first = _firstNameController.text.trim();
+    String middle = _middleNameController.text.trim();
+    final String last = _lastNameController.text.trim();
+
+    if (middle.length == 1) {
+      middle = '$middle.';
+    }
+
+    return [first, middle, last].where((part) => part.isNotEmpty).join(' ');
+  }
+
+  // ============================================================
+  // SEX
+  // ============================================================
+  String? _selectedSex;
+
+  final List<Map<String, dynamic>> _sexOptions = const [
+    {'label': 'Male', 'icon': Icons.male_rounded},
+    {'label': 'Female', 'icon': Icons.female_rounded},
+    {'label': 'Other', 'icon': Icons.transgender_rounded},
+  ];
+
+  // ============================================================
+  // STRICT EMAIL VALIDATION
+  //
+  // Accepted : Example@gmail.com, first.last@mail.example.com
+  // Rejected : @gmail.com        (nothing before the @)
+  //            example@ gmail.com (space)
+  //            example@gmail      (no domain extension)
+  //            example@gmail..com (double dot)
+  //            .example@gmail.com (starts with a dot)
+  // ============================================================
+  static final RegExp _emailRegex = RegExp(
+    r'^[A-Za-z0-9]+([._%+\-][A-Za-z0-9]+)*'
+    r'@'
+    r'[A-Za-z0-9]+(-[A-Za-z0-9]+)*(\.[A-Za-z0-9]+(-[A-Za-z0-9]+)*)*'
+    r'\.[A-Za-z]{2,}$',
+  );
+
+  // ============================================================
+  // ALLOWED DOCUMENT FILE TYPES
+  // ============================================================
+  static const List<String> _licenseExtensions = ['png', 'jpg', 'jpeg'];
+  static const List<String> _documentExtensions = ['pdf', 'doc', 'docx'];
+
   String? _selectedRegion;
   String? _selectedProvince;
   String? _selectedMunicipality;
   String? _selectedBarangay;
+
+  // Preferred logistics hub selected during rider registration.
+  String? _selectedLogisticsCenter;
 
   // PSGC codes are kept internally for API requests.
   String? _selectedRegionCode;
@@ -98,11 +209,84 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   String? _selectedVehicleType;
 
+  // ============================================================
+  // JOB TYPE
+  // Vehicle decides which jobs are possible; the job decides which
+  // dashboard the rider lands on.
+  //
+  //   Motorcycle / Tricycle -> Delivery (automatic, no question)
+  //   Van                   -> Seller Pickup  or  Delivery
+  //   Truck                 -> Long-distance Handover  or  Delivery
+  //                            (large items)
+  // ============================================================
+  static const String jobSellerPickup = 'Seller Pickup';
+  static const String jobLongDistance = 'Long-distance Handover';
+  static const String jobDelivery = 'Delivery';
+
+  String? _selectedJobType;
+
+  static const Map<String, List<Map<String, dynamic>>> _jobOptions = {
+    'Van': [
+      {
+        'value': jobSellerPickup,
+        'label': 'Seller Pickup',
+        'description': 'Collect parcels from sellers and bring them to the sorting center.',
+        'icon': Icons.storefront_outlined,
+      },
+      {
+        'value': jobDelivery,
+        'label': 'Delivery',
+        'description': 'Deliver parcels from the sorting center to customers.',
+        'icon': Icons.delivery_dining_outlined,
+      },
+    ],
+    'Truck': [
+      {
+        'value': jobLongDistance,
+        'label': 'Long-distance Handover',
+        'description': 'Transport parcels between hubs over long distances.',
+        'icon': Icons.route_outlined,
+      },
+      {
+        'value': jobDelivery,
+        'label': 'Delivery (Large Items)',
+        'description': 'Deliver large or bulky items from the sorting center to customers.',
+        'icon': Icons.local_shipping_outlined,
+      },
+    ],
+  };
+
+  /// Van and Truck riders must choose a job. The other vehicles are
+  /// always Delivery.
+  bool get _needsJobChoice => _jobOptions.containsKey(_selectedVehicleType);
+
+  /// Label shown for the chosen job in the review card.
+  String _jobDisplayLabel() {
+    final String? vehicle = _selectedVehicleType;
+    final String? job = _selectedJobType;
+
+    if (vehicle == null || job == null) return 'Not selected';
+
+    final List<Map<String, dynamic>>? options = _jobOptions[vehicle];
+
+    if (options != null) {
+      for (final option in options) {
+        if (option['value'] == job) {
+          return option['label'] as String;
+        }
+      }
+    }
+
+    return job;
+  }
+
   final ImagePicker _picker = ImagePicker();
 
+  // Driver's license is a photo (PNG / JPG). OR and CR are documents
+  // (PDF / DOC / DOCX), so they are stored as plain files.
   XFile? _licenseImage;
-  XFile? _orImage;
-  XFile? _crImage;
+  File? _orFile;
+  File? _crFile;
 
   OverlayEntry? _topNotificationEntry;
 
@@ -412,7 +596,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
-    _fullNameController.dispose();
+    _firstNameController.dispose();
+    _middleNameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     _ageController.dispose();
@@ -498,6 +684,83 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
+  // ============================================================
+  // FILE HELPERS
+  // ============================================================
+
+  String _extensionOf(String path) {
+    final int dot = path.lastIndexOf('.');
+
+    if (dot == -1 || dot == path.length - 1) return '';
+
+    return path.substring(dot + 1).toLowerCase();
+  }
+
+  String _fileNameOf(String path) {
+    return path.split(RegExp(r'[/\\]')).last;
+  }
+
+  // ============================================================
+  // PASSWORD STRENGTH
+  //
+  //   level 0 = empty
+  //   level 1 = Weak   (also anything under 8 characters)
+  //   level 2 = Fair
+  //   level 3 = Good
+  //   level 4 = Strong
+  // ============================================================
+
+  int _passwordStrengthLevel(String password) {
+    if (password.isEmpty) return 0;
+    if (password.length < 8) return 1;
+
+    int score = 1; // The 8-character minimum is met.
+
+    if (password.length >= 12) score++;
+
+    if (RegExp(r'[a-z]').hasMatch(password) &&
+        RegExp(r'[A-Z]').hasMatch(password)) {
+      score++;
+    }
+
+    if (RegExp(r'[0-9]').hasMatch(password)) score++;
+
+    if (RegExp(r'[^A-Za-z0-9]').hasMatch(password)) score++;
+
+    return score >= 4 ? 4 : score;
+  }
+
+  String _passwordStrengthLabel(String password) {
+    if (password.isEmpty) return 'Enter a password';
+    if (password.length < 8) return 'Too short';
+
+    switch (_passwordStrengthLevel(password)) {
+      case 1:
+        return 'Weak';
+      case 2:
+        return 'Fair';
+      case 3:
+        return 'Good';
+      default:
+        return 'Strong';
+    }
+  }
+
+  Color _passwordStrengthColor(int level) {
+    switch (level) {
+      case 1:
+        return const Color(0xFFC62828);
+      case 2:
+        return const Color(0xFFEF6C00);
+      case 3:
+        return const Color(0xFF9E9D24);
+      case 4:
+        return const Color(0xFF62191C);
+      default:
+        return lightBeige;
+    }
+  }
+
   void _nextStep() {
     FocusScope.of(context).unfocus();
 
@@ -564,13 +827,85 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  // ============================================================
+  // NAME CHECK
+  // Returns an error message, or null when the name is valid.
+  //
+  // allowInitial: when true, a single letter with or without a dot
+  // ("S" or "S.") is accepted. Used for the middle name only.
+  // ============================================================
+  String? _nameError(
+    String value,
+    String label, {
+    bool required = true,
+    bool allowInitial = false,
+  }) {
+    final String name = value.trim();
+
+    if (name.isEmpty) {
+      return required ? 'Please enter your $label.' : null;
+    }
+
+    if (name.contains(RegExp(r'[0-9]'))) {
+      return 'Your $label must not contain numbers.';
+    }
+
+    final int letterCount = name
+        .replaceAll(RegExp(r"[^A-Za-zÀ-ÖØ-öø-ÿ]"), '')
+        .length;
+
+    // A single letter is only allowed when it is an initial,
+    // with or without a dot (e.g. "S" or "S.").
+    final bool isSingleInitial = allowInitial && _initialRegex.hasMatch(name);
+
+    if (!isSingleInitial && letterCount < 2) {
+      return 'Your $label must have at least 2 letters.';
+    }
+
+    if (!_nameRegex.hasMatch(name)) {
+      return 'Your $label may only contain letters, spaces, hyphens, apostrophes and periods.';
+    }
+
+    return null;
+  }
+
   bool _validatePersonal() {
-    final String fullName = _fullNameController.text.trim();
     final String email = _emailController.text.trim();
     final String phone = _phoneController.text.trim();
 
-    if (fullName.isEmpty) {
-      _showMessage('Please enter your full name.', icon: Icons.person_outline);
+    final String? firstNameError = _nameError(
+      _firstNameController.text,
+      'first name',
+    );
+
+    if (firstNameError != null) {
+      _showMessage(firstNameError, icon: Icons.person_outline);
+
+      return false;
+    }
+
+    // Middle name is optional, but if it is filled in it must be valid.
+    // A single initial such as "S" or "S." is allowed.
+    final String? middleNameError = _nameError(
+      _middleNameController.text,
+      'middle name',
+      required: false,
+      allowInitial: true,
+    );
+
+    if (middleNameError != null) {
+      _showMessage(middleNameError, icon: Icons.person_outline);
+
+      return false;
+    }
+
+    final String? lastNameError = _nameError(
+      _lastNameController.text,
+      'last name',
+    );
+
+    if (lastNameError != null) {
+      _showMessage(lastNameError, icon: Icons.person_outline);
 
       return false;
     }
@@ -584,9 +919,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    if (!email.contains('@') || !email.contains('.')) {
+    if (email.contains(RegExp(r'\s'))) {
       _showMessage(
-        'Please enter a valid email address.',
+        'Email address must not contain spaces.',
+        icon: Icons.email_outlined,
+      );
+
+      return false;
+    }
+
+    if (email.startsWith('@')) {
+      _showMessage(
+        'Please enter your email name before the @ (example: name@gmail.com).',
+        icon: Icons.email_outlined,
+      );
+
+      return false;
+    }
+
+    if (!_emailRegex.hasMatch(email)) {
+      _showMessage(
+        'Please enter a valid email address (example: name@gmail.com).',
         icon: Icons.email_outlined,
       );
 
@@ -607,6 +960,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'Please enter a valid PH mobile number. It should start with 9 after +63.',
         icon: Icons.phone_outlined,
       );
+
+      return false;
+    }
+
+    if (_selectedSex == null) {
+      _showMessage('Please select your sex.', icon: Icons.wc_outlined);
 
       return false;
     }
@@ -675,6 +1034,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
+    if (_selectedLogisticsCenter == null) {
+      _showMessage(
+        'Please select your preferred logistics hub.',
+        icon: Icons.local_shipping_outlined,
+      );
+
+      return false;
+    }
+
     return true;
   }
 
@@ -689,9 +1057,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       _showMessage(
-        'Password must contain at least 6 characters.',
+        'Password must contain at least 8 characters.',
         icon: Icons.lock_outline,
       );
 
@@ -729,6 +1097,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
+    if (_needsJobChoice && _selectedJobType == null) {
+      _showMessage(
+        'Please choose what you will use your $_selectedVehicleType for.',
+        icon: Icons.work_outline_rounded,
+      );
+
+      return false;
+    }
+
     if (_licenseNumberController.text.trim().isEmpty) {
       _showMessage(
         "Please enter your driver's license number.",
@@ -750,21 +1127,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _validateDocuments() {
     if (_licenseImage == null) {
       _showMessage(
-        "Please upload your driver's license.",
+        "Please upload your driver's license (PNG or JPG).",
         icon: Icons.badge_outlined,
       );
 
       return false;
     }
 
-    if (_orImage == null) {
-      _showMessage('Please upload your OR.', icon: Icons.description_outlined);
+    if (_orFile == null) {
+      _showMessage(
+        'Please upload your OR (PDF, DOC or DOCX).',
+        icon: Icons.description_outlined,
+      );
 
       return false;
     }
 
-    if (_crImage == null) {
-      _showMessage('Please upload your CR.', icon: Icons.description_outlined);
+    if (_crFile == null) {
+      _showMessage(
+        'Please upload your CR (PDF, DOC or DOCX).',
+        icon: Icons.description_outlined,
+      );
 
       return false;
     }
@@ -772,7 +1155,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return true;
   }
 
-  Future<void> _pickDocumentPhoto({required String documentType}) async {
+  // ============================================================
+  // DRIVER'S LICENSE: PHOTO ONLY (PNG / JPG)
+  // ============================================================
+  Future<void> _pickLicensePhoto() async {
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: cream,
@@ -798,12 +1184,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 const SizedBox(height: 16),
 
                 const Text(
-                  'Upload Document',
+                  "Upload Driver's License",
                   style: TextStyle(
-                    color: darkMaroon,
+                    color: Color(0xFF62191C),
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
                   ),
+                ),
+
+                const SizedBox(height: 3),
+
+                const Text(
+                  'Accepted formats: PNG or JPG',
+                  style: TextStyle(color: brownBeige, fontSize: 11),
                 ),
 
                 const SizedBox(height: 8),
@@ -862,15 +1255,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return;
       }
 
+      String extension = _extensionOf(image.path);
+
+      if (extension.isEmpty) {
+        extension = _extensionOf(image.name);
+      }
+
+      if (!_licenseExtensions.contains(extension)) {
+        _showMessage(
+          "Driver's license must be a PNG or JPG image.",
+          icon: Icons.image_not_supported_outlined,
+        );
+
+        return;
+      }
+
       setState(() {
-        switch (documentType) {
-          case 'license':
-            _licenseImage = image;
-          case 'or':
-            _orImage = image;
-          case 'cr':
-            _crImage = image;
-        }
+        _licenseImage = image;
       });
     } catch (e) {
       if (!mounted) {
@@ -881,7 +1282,67 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  // ============================================================
+  // OR / CR: DOCUMENT FILE ONLY (PDF / DOC / DOCX)
+  // ============================================================
+  Future<void> _pickDocumentFile({required String documentType}) async {
+    try {
+      final PlatformFile? picked = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: _documentExtensions,
+      );
+
+      if (picked == null || !mounted) {
+        return;
+      }
+
+      final String? path = picked.path;
+
+      if (path == null) {
+        _showMessage('Unable to read the selected file.');
+        return;
+      }
+
+      String extension = _extensionOf(path);
+
+      if (extension.isEmpty) {
+        extension = _extensionOf(picked.name);
+      }
+
+      if (!_documentExtensions.contains(extension)) {
+        _showMessage(
+          'Only PDF, DOC or DOCX files are accepted.',
+          icon: Icons.description_outlined,
+        );
+
+        return;
+      }
+
+      setState(() {
+        if (documentType == 'or') {
+          _orFile = File(path);
+        } else if (documentType == 'cr') {
+          _crFile = File(path);
+        }
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint('Document pick error: $e');
+      _showMessage('Unable to select the document file.');
+    }
+  }
+
+  // ============================================================
+  // SIGN UP (local only)
+  // The Node.js signup API was removed. The rider profile is now
+  // saved locally and no data is sent to any server.
+  // ============================================================
   Future<void> _signUp() async {
+    if (_isLoading) return;
+
     if (!_validateDocuments()) {
       return;
     }
@@ -894,15 +1355,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    if (_selectedBirthday == null ||
+    if (_selectedSex == null ||
+        _selectedBirthday == null ||
         _selectedRegion == null ||
         _selectedProvince == null ||
         _selectedMunicipality == null ||
         _selectedBarangay == null ||
+        _selectedLogisticsCenter == null ||
         _selectedVehicleType == null ||
+        _selectedJobType == null ||
         _licenseImage == null ||
-        _orImage == null ||
-        _crImage == null) {
+        _orFile == null ||
+        _crFile == null) {
       _showMessage(
         'Please complete all registration information.',
         icon: Icons.warning_amber_rounded,
@@ -910,33 +1374,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    _saveLocalRiderProfile();
-
     FocusScope.of(context).unfocus();
 
-    setState(() {
-      _isLoading = true;
-    });
+    try {
+      // No server request: the rider profile is saved locally only.
+      _saveLocalRiderProfile();
+      RiderProfile.status = 'Pending verification';
 
-    // Local/demo signup only.
-    // No Laravel request is sent from this screen.
-    await Future.delayed(const Duration(milliseconds: 350));
+      if (!mounted) return;
 
-    if (!mounted) {
-      return;
+      _showPendingVerificationDialog();
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Something went wrong while saving your registration. Please try again.',
+        icon: Icons.error_outline_rounded,
+      );
+
+      debugPrint('Rider signup error: $e');
     }
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    _showPendingVerificationDialog();
   }
 
   void _saveLocalRiderProfile() {
-    RiderProfile.name = _fullNameController.text.trim();
+    // The three name fields are combined into one full name, so the rest
+    // of the app (which reads RiderProfile.name) keeps working unchanged.
+    RiderProfile.name = _fullName;
     RiderProfile.email = _emailController.text.trim();
     RiderProfile.phone = '+63 ${_phoneController.text.trim()}';
+    RiderProfile.sex = _selectedSex!;
     RiderProfile.birthday = _formatBirthday(_selectedBirthday!);
     RiderProfile.age = int.tryParse(_ageController.text.trim());
     RiderProfile.region = _selectedRegion!;
@@ -946,11 +1412,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     RiderProfile.street = _streetController.text.trim();
     RiderProfile.houseUnit = _houseUnitController.text.trim();
     RiderProfile.vehicleType = _selectedVehicleType!;
+    RiderProfile.jobType = _selectedJobType!;
     RiderProfile.licenseNumber = _licenseNumberController.text.trim();
     RiderProfile.plateNumber = _plateNumberController.text.trim();
     RiderProfile.localDriverLicenseFile = File(_licenseImage!.path);
-    RiderProfile.localOrFile = File(_orImage!.path);
-    RiderProfile.localCrFile = File(_crImage!.path);
+    RiderProfile.localOrFile = _orFile!;
+    RiderProfile.localCrFile = _crFile!;
     RiderProfile.status = 'Local demo profile';
   }
 
@@ -1027,7 +1494,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: brownBeige, fontSize: 12),
+      hintStyle: const TextStyle(color: Color(0xFF9E7161), fontSize: 12),
       prefixIcon: Icon(icon, color: maroon, size: 20),
       suffixIcon: suffixIcon,
       filled: true,
@@ -1059,6 +1526,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     bool readOnly = false,
     String? fixedPrefix,
     List<TextInputFormatter>? inputFormatters,
+    ValueChanged<String>? onChanged,
   }) {
     if (fixedPrefix == null) {
       return SizedBox(
@@ -1070,6 +1538,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           obscureText: obscureText,
           readOnly: readOnly,
           inputFormatters: inputFormatters,
+          onChanged: onChanged,
           style: const TextStyle(color: darkMaroon, fontSize: 13),
           decoration: _inputDecoration(
             hint: hint,
@@ -1115,6 +1584,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               obscureText: obscureText,
               readOnly: readOnly,
               inputFormatters: inputFormatters,
+              onChanged: onChanged,
               style: const TextStyle(color: darkMaroon, fontSize: 13),
               decoration: InputDecoration(
                 hintText: hint,
@@ -1389,24 +1859,135 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  // ============================================================
+  // SEX SELECTOR (Male / Female / Other)
+  // ============================================================
+  Widget _buildSexSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(
+            'Sex',
+            style: TextStyle(
+              color: brownBeige,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Row(
+          children: List.generate(_sexOptions.length, (index) {
+            final Map<String, dynamic> option = _sexOptions[index];
+            final String label = option['label'] as String;
+            final IconData icon = option['icon'] as IconData;
+            final bool selected = _selectedSex == label;
+
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  right: index < _sexOptions.length - 1 ? 8 : 0,
+                ),
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedSex = label;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(13),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? maroon
+                          : Colors.white.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(color: selected ? maroon : lightBeige),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          icon,
+                          color: selected ? Colors.white : darkMaroon,
+                          size: 19,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: selected ? Colors.white : darkMaroon,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPersonalStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepTitle('Personal Information', 'Tell us a little about yourself.'),
         const SizedBox(height: 14),
+
+        // FIRST NAME
         _textField(
-          controller: _fullNameController,
-          hint: 'Full Name',
+          controller: _firstNameController,
+          hint: 'First Name',
           icon: Icons.person_outline,
           textCapitalization: TextCapitalization.words,
+          keyboardType: TextInputType.name,
+          // Letters only: numbers are removed as the user types or pastes.
+          inputFormatters: [_NameInputFormatter()],
         ),
         const SizedBox(height: 10),
+
+        // MIDDLE NAME (optional, a single initial like "S" or "S." is OK)
+        _textField(
+          controller: _middleNameController,
+          hint: 'Middle Name or Initial (optional)',
+          icon: Icons.person_outline,
+          textCapitalization: TextCapitalization.words,
+          keyboardType: TextInputType.name,
+          inputFormatters: [_NameInputFormatter()],
+        ),
+        const SizedBox(height: 10),
+
+        // LAST NAME
+        _textField(
+          controller: _lastNameController,
+          hint: 'Last Name',
+          icon: Icons.person_outline,
+          textCapitalization: TextCapitalization.words,
+          keyboardType: TextInputType.name,
+          inputFormatters: [_NameInputFormatter()],
+        ),
+        const SizedBox(height: 10),
+
         _textField(
           controller: _emailController,
-          hint: 'Email Address',
+          hint: 'Email Address (example@gmail.com)',
           icon: Icons.email_outlined,
           keyboardType: TextInputType.emailAddress,
+          // Spaces are never valid in an email address.
+          inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
         ),
         const SizedBox(height: 10),
         _textField(
@@ -1417,7 +1998,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           fixedPrefix: '+63',
           inputFormatters: [_PhLocalNumberFormatter()],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
+        _buildSexSelector(),
+        const SizedBox(height: 12),
         InkWell(
           onTap: _pickBirthday,
           borderRadius: BorderRadius.circular(14),
@@ -1637,6 +2220,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
           textCapitalization: TextCapitalization.words,
         ),
 
+        const SizedBox(height: 10),
+
+        _flatDropdownField(
+          hint: 'Preferred Logistics Hub*',
+          value: _selectedLogisticsCenter,
+          items: const [
+            'Victoria Hub',
+            'Calamba Logistics Hub',
+            'No preference — assign me later',
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedLogisticsCenter = value;
+            });
+          },
+        ),
+
+        const SizedBox(height: 5),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            'Choose your preferred hub. Logistics may confirm or change your assignment.',
+            style: TextStyle(color: brownBeige, fontSize: 10, height: 1.35),
+          ),
+        ),
         const SizedBox(height: 8),
       ],
     );
@@ -1706,6 +2314,90 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  // ============================================================
+  // PASSWORD STRENGTH METER
+  // ============================================================
+  Widget _buildPasswordStrengthMeter() {
+    final String password = _passwordController.text;
+    final int level = _passwordStrengthLevel(password);
+    final Color color = _passwordStrengthColor(level);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Row(
+                children: List.generate(4, (index) {
+                  return Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      height: 6,
+                      margin: EdgeInsets.only(right: index < 3 ? 5 : 0),
+                      decoration: BoxDecoration(
+                        color: index < level
+                            ? color
+                            : lightBeige.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              _passwordStrengthLabel(password),
+              style: TextStyle(
+                color: password.isEmpty ? brownBeige : color,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            _requirementChip('8+ characters', password.length >= 8),
+            _requirementChip('Uppercase', RegExp(r'[A-Z]').hasMatch(password)),
+            _requirementChip('Lowercase', RegExp(r'[a-z]').hasMatch(password)),
+            _requirementChip('Number', RegExp(r'[0-9]').hasMatch(password)),
+            _requirementChip(
+              'Symbol',
+              RegExp(r'[^A-Za-z0-9]').hasMatch(password),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _requirementChip(String text, bool met) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          met ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+          size: 14,
+          color: met ? const Color(0xFF9E7161) : brownBeige,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            color: met ? const Color(0xFF9E7161) : brownBeige,
+            fontSize: 11,
+            fontWeight: met ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSecurityStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1717,9 +2409,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         const SizedBox(height: 22),
         _textField(
           controller: _passwordController,
-          hint: 'Create Password',
+          hint: 'Create Password (min. 8 characters)',
           icon: Icons.lock_outline,
           obscureText: _obscurePassword,
+          // Rebuild so the strength meter updates while typing.
+          onChanged: (_) {
+            setState(() {});
+          },
           suffixIcon: IconButton(
             onPressed: () {
               setState(() {
@@ -1735,6 +2431,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        _buildPasswordStrengthMeter(),
         const SizedBox(height: 14),
         _textField(
           controller: _confirmPasswordController,
@@ -1772,7 +2470,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Use at least 6 characters. Do not share your password with anyone.',
+                  'Use at least 8 characters. Mix uppercase and lowercase letters, numbers and symbols for a stronger password. Do not share your password with anyone.',
                   style: TextStyle(
                     color: brownBeige,
                     fontSize: 11,
@@ -1798,6 +2496,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
         const SizedBox(height: 14),
         _vehicleTypeSelector(),
+
+        // Only Van and Truck riders are asked what the vehicle is for.
+        // Motorcycle and Tricycle are always Delivery.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: _needsJobChoice
+              ? _buildJobTypeSelector()
+              : const SizedBox(width: double.infinity),
+        ),
+
         const SizedBox(height: 14),
         _textField(
           controller: _licenseNumberController,
@@ -1840,7 +2550,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
               child: InkWell(
                 onTap: () {
                   setState(() {
-                    _selectedVehicleType = label;
+                    // Changing the vehicle resets the job choice, because
+                    // the available jobs depend on the vehicle.
+                    if (_selectedVehicleType != label) {
+                      _selectedVehicleType = label;
+                      _selectedJobType = _jobOptions.containsKey(label)
+                          ? null
+                          : jobDelivery;
+                    }
                     RiderProfile.vehicleType = label;
                   });
                 },
@@ -1884,44 +2601,202 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  // ============================================================
+  // JOB TYPE SELECTOR (Van / Truck only)
+  // ============================================================
+
+  Widget _buildJobTypeSelector() {
+    final String vehicle = _selectedVehicleType!;
+    final List<Map<String, dynamic>> options = _jobOptions[vehicle]!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Text(
+          'What will you use your $vehicle for?',
+          style: const TextStyle(
+            color: darkMaroon,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 3),
+        const Text(
+          'This decides which dashboard you will use. It can only be '
+          'changed by the admin later.',
+          style: TextStyle(color: brownBeige, fontSize: 10, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        ...options.map((option) {
+          final String value = option['value'] as String;
+          final String label = option['label'] as String;
+          final String description = option['description'] as String;
+          final IconData icon = option['icon'] as IconData;
+          final bool selected = _selectedJobType == value;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedJobType = value;
+                });
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? maroon.withValues(alpha: 0.10)
+                      : Colors.white.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected ? maroon : lightBeige,
+                    width: selected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? maroon
+                            : lightBeige.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: selected ? Colors.white : darkMaroon,
+                        size: 21,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              color: darkMaroon,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            description,
+                            style: const TextStyle(
+                              color: brownBeige,
+                              fontSize: 10,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      selected
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: selected ? maroon : lightBeige,
+                      size: 21,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // Short review of the vehicle and job shown on the last step so the
+  // rider can confirm their choice before submitting.
+  Widget _buildJobSummaryCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: lightBeige),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.work_outline_rounded, color: maroon, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Vehicle & Job',
+                  style: TextStyle(color: brownBeige, fontSize: 10),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${_selectedVehicleType ?? '-'}  •  ${_jobDisplayLabel()}',
+                  style: const TextStyle(
+                    color: darkMaroon,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVerificationStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepTitle(
           'Document Verification',
-          'Upload clear photos for admin approval.',
+          'Upload your documents for admin approval.',
         ),
         const SizedBox(height: 14),
+        _buildJobSummaryCard(),
+        const SizedBox(height: 10),
         _compactDocumentCard(
           title: "Driver's License",
           subtitle: _licenseImage == null
-              ? 'Upload front side'
+              ? 'Photo only: PNG or JPG'
               : 'Photo uploaded',
           image: _licenseImage,
           icon: Icons.badge_outlined,
-          onTap: () {
-            _pickDocumentPhoto(documentType: 'license');
-          },
+          onTap: _pickLicensePhoto,
         ),
         const SizedBox(height: 10),
-        _compactDocumentCard(
+        _documentFileCard(
           title: 'Official Receipt (OR)',
-          subtitle: _orImage == null ? 'Upload OR' : 'OR uploaded',
-          image: _orImage,
+          hint: 'PDF, DOC or DOCX only',
+          file: _orFile,
           icon: Icons.description_outlined,
           onTap: () {
-            _pickDocumentPhoto(documentType: 'or');
+            _pickDocumentFile(documentType: 'or');
           },
         ),
         const SizedBox(height: 10),
-        _compactDocumentCard(
+        _documentFileCard(
           title: 'Certificate of Registration (CR)',
-          subtitle: _crImage == null ? 'Upload CR' : 'CR uploaded',
-          image: _crImage,
+          hint: 'PDF, DOC or DOCX only',
+          file: _crFile,
           icon: Icons.article_outlined,
           onTap: () {
-            _pickDocumentPhoto(documentType: 'cr');
+            _pickDocumentFile(documentType: 'cr');
           },
         ),
         const SizedBox(height: 12),
@@ -2024,6 +2899,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  // Card for the driver's license (photo preview).
   Widget _compactDocumentCard({
     required String title,
     required String subtitle,
@@ -2101,6 +2977,111 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
             Icon(
               uploaded ? Icons.check_circle : Icons.add_a_photo_outlined,
+              color: uploaded ? Colors.green : maroon,
+              size: 21,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Card for OR / CR (PDF, DOC, DOCX file, shown by file name).
+  Widget _documentFileCard({
+    required String title,
+    required String hint,
+    required File? file,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    final bool uploaded = file != null;
+    final String extension = uploaded ? _extensionOf(file.path) : '';
+
+    final IconData fileIcon = !uploaded
+        ? icon
+        : (extension == 'pdf'
+              ? Icons.picture_as_pdf_outlined
+              : Icons.description_outlined);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 92,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.50),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: uploaded ? Colors.green.withValues(alpha: 0.50) : lightBeige,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                color: uploaded
+                    ? Colors.green.withValues(alpha: 0.12)
+                    : lightBeige.withValues(alpha: 0.40),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(fileIcon, color: darkMaroon, size: 27),
+                  if (uploaded) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      extension.toUpperCase(),
+                      style: const TextStyle(
+                        color: darkMaroon,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: darkMaroon,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    uploaded ? _fileNameOf(file.path) : hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: brownBeige, fontSize: 10),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    uploaded ? 'Tap to change' : 'Tap to upload',
+                    style: const TextStyle(
+                      color: maroon,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              uploaded ? Icons.check_circle : Icons.upload_file_outlined,
               color: uploaded ? Colors.green : maroon,
               size: 21,
             ),
@@ -2374,13 +3355,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                   const SizedBox(height: 18),
 
-                  // FIX: the step content is now wrapped in a SingleChildScrollView.
-                  // Previously this Column of fields could be taller than the
-                  // Expanded area (especially the Address step with 4 dropdowns,
-                  // or the Personal step once the keyboard opens and shrinks the
-                  // available height), which caused a RenderFlex overflow and made
-                  // the layout jump/shift. Now it scrolls internally instead, and
-                  // the CONTINUE / BACK buttons below stay fixed in place.
+                  // The step content scrolls internally, and the CONTINUE /
+                  // BACK buttons below stay fixed in place.
                   Expanded(
                     child: SingleChildScrollView(
                       keyboardDismissBehavior:

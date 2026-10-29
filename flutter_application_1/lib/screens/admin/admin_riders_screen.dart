@@ -9,7 +9,6 @@ class AdminRidersScreen extends StatefulWidget {
 
 class _AdminRidersScreenState extends State<AdminRidersScreen> {
   static const Color darkMaroon = Color(0xFF62191C);
-  static const Color maroon = Color(0xFF873632);
   static const Color brownBeige = Color(0xFF9E7161);
   static const Color cream = Color(0xFFE0CFC2);
   static const Color background = Color(0xFFF7F3F1);
@@ -18,9 +17,12 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
   static const Color warning = Color(0xFFB7791F);
   static const Color danger = Color(0xFFB3261E);
 
-  String _searchText = '';
-  String _selectedFilter = 'All';
+  // Room for the floating nav bar at the bottom of the dashboard.
+  static const double _navClearance = 130;
 
+  String _searchText = '';
+
+  // Demo rider profiles. Account status is managed by Logistics.
   final List<Map<String, dynamic>> riders = [
     {
       'name': 'Earl Chumacera',
@@ -28,17 +30,6 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
       'email': 'earl@lumear.com',
       'phone': '0912 345 6789',
       'status': 'Active',
-      'device': 'Samsung Galaxy A55',
-      'ip': '192.168.1.24',
-      'lastLogin': 'Sep 14, 2026 • 10:42 AM',
-      'flagged': false,
-      'risk': 'Normal',
-      'logs': [
-        'Logged in successfully',
-        'Accepted delivery LMR-10231',
-        'Updated delivery to In Transit',
-        'Opened Help & Support',
-      ],
     },
     {
       'name': 'Juan Dela Cruz',
@@ -46,17 +37,6 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
       'email': 'juan@lumear.com',
       'phone': '0917 555 2011',
       'status': 'Active',
-      'device': 'Redmi Note 13',
-      'ip': '203.177.45.81',
-      'lastLogin': 'Sep 14, 2026 • 9:10 AM',
-      'flagged': true,
-      'risk': 'Suspicious',
-      'logs': [
-        'Login from new device',
-        'Multiple login locations detected',
-        'Accepted delivery LMR-10232',
-        'Security alert generated',
-      ],
     },
     {
       'name': 'Pedro Santos',
@@ -64,17 +44,6 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
       'email': 'pedro@lumear.com',
       'phone': '0998 332 2211',
       'status': 'Suspended',
-      'device': 'OPPO Reno 12',
-      'ip': '112.198.70.19',
-      'lastLogin': 'Sep 13, 2026 • 7:22 PM',
-      'flagged': true,
-      'risk': 'High Risk',
-      'logs': [
-        'Repeated failed login attempts',
-        'Suspicious account activity detected',
-        'Admin warning sent',
-        'Account suspended',
-      ],
     },
     {
       'name': 'Mark Reyes',
@@ -82,17 +51,6 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
       'email': 'mark@lumear.com',
       'phone': '0922 111 2233',
       'status': 'Terminated',
-      'device': 'Realme 12 Pro',
-      'ip': '49.145.100.77',
-      'lastLogin': 'Sep 10, 2026 • 2:30 PM',
-      'flagged': true,
-      'risk': 'Terminated',
-      'logs': [
-        'Policy violation reported',
-        'Account investigation opened',
-        'Account suspended',
-        'Account terminated',
-      ],
     },
   ];
 
@@ -101,32 +59,9 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
     final List<Map<String, dynamic>> filteredRiders = riders.where((rider) {
       final String search = _searchText.toLowerCase();
 
-      final bool matchesSearch =
-          rider['name'].toString().toLowerCase().contains(search) ||
+      return rider['name'].toString().toLowerCase().contains(search) ||
           rider['id'].toString().toLowerCase().contains(search) ||
           rider['email'].toString().toLowerCase().contains(search);
-
-      bool matchesFilter = true;
-
-      switch (_selectedFilter) {
-        case 'Active':
-          matchesFilter = rider['status'] == 'Active';
-          break;
-
-        case 'Flagged':
-          matchesFilter = rider['flagged'] == true;
-          break;
-
-        case 'Suspended':
-          matchesFilter = rider['status'] == 'Suspended';
-          break;
-
-        case 'Terminated':
-          matchesFilter = rider['status'] == 'Terminated';
-          break;
-      }
-
-      return matchesSearch && matchesFilter;
     }).toList();
 
     return Container(
@@ -139,7 +74,7 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Rider Monitoring',
+                  'Rider Information',
                   style: TextStyle(
                     color: darkMaroon,
                     fontSize: 20,
@@ -150,7 +85,7 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
                 const SizedBox(height: 4),
 
                 const Text(
-                  'Monitor rider accounts, device activity and security alerts.',
+                  'View rider account and contact details.',
                   style: TextStyle(color: brownBeige, fontSize: 12),
                 ),
 
@@ -163,7 +98,7 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
                     });
                   },
                   decoration: InputDecoration(
-                    hintText: 'Search rider, ID or email...',
+                    hintText: 'Search name, rider ID or email...',
                     prefixIcon: const Icon(Icons.search_rounded),
                     filled: true,
                     fillColor: Colors.white,
@@ -171,21 +106,6 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
                       borderRadius: BorderRadius.circular(18),
                       borderSide: BorderSide.none,
                     ),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _filterChip('All'),
-                      _filterChip('Active'),
-                      _filterChip('Flagged'),
-                      _filterChip('Suspended'),
-                      _filterChip('Terminated'),
-                    ],
                   ),
                 ),
               ],
@@ -203,7 +123,7 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 25),
+                    padding: EdgeInsets.fromLTRB(16, 4, 16, _navClearance),
                     itemCount: filteredRiders.length,
                     itemBuilder: (context, index) {
                       return _riderCard(filteredRiders[index]);
@@ -215,40 +135,12 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
     );
   }
 
-  Widget _filterChip(String text) {
-    final bool selected = _selectedFilter == text;
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        selected: selected,
-        label: Text(text),
-        selectedColor: cream,
-        backgroundColor: Colors.white,
-        labelStyle: TextStyle(
-          color: selected ? darkMaroon : brownBeige,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-        ),
-        onSelected: (_) {
-          setState(() {
-            _selectedFilter = text;
-          });
-        },
-      ),
-    );
-  }
-
   Widget _riderCard(Map<String, dynamic> rider) {
-    final bool flagged = rider['flagged'] == true;
-
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: flagged
-            ? Border.all(color: warning.withValues(alpha: 0.40))
-            : null,
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -273,26 +165,6 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
                       ),
                     ),
                   ),
-
-                  if (flagged)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 15,
-                        height: 15,
-                        decoration: BoxDecoration(
-                          color: warning,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(
-                          Icons.priority_high_rounded,
-                          color: Colors.white,
-                          size: 9,
-                        ),
-                      ),
-                    ),
                 ],
               ),
 
@@ -313,28 +185,6 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
                             ),
                           ),
                         ),
-
-                        if (flagged) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: warning.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Text(
-                              'FLAGGED',
-                              style: TextStyle(
-                                color: warning,
-                                fontSize: 8,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
 
@@ -381,277 +231,118 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
     );
   }
 
+  // ============================================================
+  // RIDER DETAILS (view only)
+  // ============================================================
+
   void _showRiderDetails(Map<String, dynamic> rider) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              height: MediaQuery.sizeOf(context).height * 0.92,
-              decoration: const BoxDecoration(
-                color: background,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        return Container(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.92,
+          decoration: const BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 10),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: brownBeige.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 10),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: brownBeige.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
 
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(20),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 28,
-                              backgroundColor: cream,
-                              child: Text(
-                                rider['name'].toString().substring(0, 1),
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: cream,
+                          child: Text(
+                            rider['name'].toString().substring(0, 1),
+                            style: const TextStyle(
+                              color: darkMaroon,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 14),
+
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                rider['name'],
                                 style: const TextStyle(
                                   color: darkMaroon,
-                                  fontSize: 20,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                            ),
-
-                            const SizedBox(width: 14),
-
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    rider['name'],
-                                    style: const TextStyle(
-                                      color: darkMaroon,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  Text(
-                                    rider['id'],
-                                    style: const TextStyle(color: brownBeige),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  _statusText(rider['status']),
-                                ],
+                              Text(
+                                rider['id'],
+                                style: const TextStyle(color: brownBeige),
                               ),
-                            ),
-
-                            IconButton(
-                              onPressed: () {
-                                Navigator.pop(sheetContext);
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        _sectionHeading('Account Information'),
-
-                        _infoCard(
-                          children: [
-                            _infoRow(
-                              Icons.email_outlined,
-                              'Email',
-                              rider['email'],
-                            ),
-                            _divider(),
-                            _infoRow(
-                              Icons.phone_outlined,
-                              'Phone',
-                              rider['phone'],
-                            ),
-                            _divider(),
-                            _infoRow(
-                              Icons.badge_outlined,
-                              'Rider ID',
-                              rider['id'],
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        _sectionHeading('Security Information'),
-
-                        _infoCard(
-                          children: [
-                            _infoRow(
-                              Icons.smartphone_rounded,
-                              'Device',
-                              rider['device'],
-                            ),
-                            _divider(),
-                            _infoRow(
-                              Icons.language_rounded,
-                              'IP Address',
-                              rider['ip'],
-                            ),
-                            _divider(),
-                            _infoRow(
-                              Icons.schedule_rounded,
-                              'Last Login',
-                              rider['lastLogin'],
-                            ),
-                            _divider(),
-                            _infoRow(
-                              Icons.security_rounded,
-                              'Risk Level',
-                              rider['risk'],
-                            ),
-                          ],
-                        ),
-
-                        if (rider['flagged'] == true) ...[
-                          const SizedBox(height: 18),
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: warning.withValues(alpha: 0.10),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: warning.withValues(alpha: 0.25),
-                              ),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: warning,
-                                ),
-                                SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'Suspicious activity has been detected on this account. Review activity logs before taking action.',
-                                    style: TextStyle(
-                                      color: darkMaroon,
-                                      fontSize: 11,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                              const SizedBox(height: 3),
+                              _statusText(rider['status']),
+                            ],
                           ),
-                        ],
+                        ),
 
-                        const SizedBox(height: 22),
-
-                        _sectionHeading('Recent Activity'),
-
-                        const SizedBox(height: 8),
-
-                        ...List<String>.from(rider['logs'])
-                            .map((log) => _activityLog(log)),
-
-                        const SizedBox(height: 24),
-
-                        _sectionHeading('Account Actions'),
-
-                        const SizedBox(height: 12),
-
-                        OutlinedButton.icon(
+                        IconButton(
                           onPressed: () {
-                            _showNotificationDialog(rider);
+                            Navigator.pop(sheetContext);
                           },
-                          icon: const Icon(Icons.notifications_active_outlined),
-                          label: const Text('Send Notification'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: darkMaroon,
-                            minimumSize: const Size.fromHeight(50),
-                            side: const BorderSide(color: darkMaroon),
-                          ),
+                          icon: const Icon(Icons.close_rounded),
                         ),
-
-                        const SizedBox(height: 10),
-
-                        if (rider['status'] == 'Active')
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              _confirmAccountAction(
-                                rider: rider,
-                                action: 'Suspend',
-                                newStatus: 'Suspended',
-                                setModalState: setModalState,
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.pause_circle_outline_rounded,
-                            ),
-                            label: const Text('Suspend Account'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: warning,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(50),
-                            ),
-                          ),
-
-                        if (rider['status'] == 'Suspended')
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                rider['status'] = 'Active';
-                                rider['logs'].insert(
-                                  0,
-                                  'Account reactivated by administrator',
-                                );
-                              });
-
-                              setModalState(() {});
-                            },
-                            icon: const Icon(Icons.play_circle_outline_rounded),
-                            label: const Text('Reactivate Account'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: success,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(50),
-                            ),
-                          ),
-
-                        if (rider['status'] != 'Terminated') ...[
-                          const SizedBox(height: 10),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              _confirmAccountAction(
-                                rider: rider,
-                                action: 'Terminate',
-                                newStatus: 'Terminated',
-                                setModalState: setModalState,
-                              );
-                            },
-                            icon: const Icon(Icons.block_rounded),
-                            label: const Text('Terminate Account'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: danger,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(50),
-                            ),
-                          ),
-                        ],
-
-                        const SizedBox(height: 25),
                       ],
                     ),
-                  ),
-                ],
+
+                    const SizedBox(height: 24),
+
+                    _sectionHeading('Rider Information'),
+
+                    _infoCard(
+                      children: [
+                        _infoRow(
+                          Icons.person_outline_rounded,
+                          'Full name',
+                          rider['name'],
+                        ),
+                        _divider(),
+                        _infoRow(Icons.email_outlined, 'Email', rider['email']),
+                        _divider(),
+                        _infoRow(Icons.phone_outlined, 'Phone', rider['phone']),
+                        _divider(),
+                        _infoRow(Icons.badge_outlined, 'Rider ID', rider['id']),
+                        _divider(),
+                        _infoRow(
+                          Icons.verified_user_outlined,
+                          'Account status',
+                          rider['status'],
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 25),
+                  ],
+                ),
               ),
-            );
-          },
+            ],
+          ),
         );
       },
     );
@@ -720,202 +411,5 @@ class _AdminRidersScreenState extends State<AdminRidersScreen> {
 
   Widget _divider() {
     return const Divider(height: 20, color: Color(0xFFF0E8E4));
-  }
-
-  Widget _activityLog(String text) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.history_rounded, color: brownBeige, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: darkMaroon, fontSize: 11),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNotificationDialog(Map<String, dynamic> rider) {
-    final titleController = TextEditingController(text: 'Account Notice');
-
-    final messageController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Send Notification'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Send message to ${rider['name']}',
-                  style: const TextStyle(color: brownBeige, fontSize: 12),
-                ),
-
-                const SizedBox(height: 16),
-
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Notification Title',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                TextField(
-                  controller: messageController,
-                  minLines: 4,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Message',
-                    hintText: 'Example: Your account has been flagged for suspicious activity.',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (messageController.text.trim().isEmpty) {
-                  return;
-                }
-
-                setState(() {
-                  rider['logs'].insert(
-                    0,
-                    'Admin notification sent: ${titleController.text.trim()}',
-                  );
-                });
-
-                Navigator.pop(dialogContext);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    behavior: SnackBarBehavior.floating,
-                    content: Text('Notification sent to ${rider['name']}.'),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: darkMaroon,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Send'),
-            ),
-          ],
-        );
-      },
-    ).whenComplete(() {
-      titleController.dispose();
-      messageController.dispose();
-    });
-  }
-
-  Future<void> _confirmAccountAction({
-    required Map<String, dynamic> rider,
-    required String action,
-    required String newStatus,
-    required StateSetter setModalState,
-  }) async {
-    final reasonController = TextEditingController();
-
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('$action Account'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('$action ${rider['name']}?'),
-
-              const SizedBox(height: 15),
-
-              TextField(
-                controller: reasonController,
-                minLines: 3,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  labelText: 'Reason',
-                  hintText: 'Enter the reason for this action...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (reasonController.text.trim().isEmpty) {
-                  return;
-                }
-
-                Navigator.pop(dialogContext, true);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: action == 'Terminate' ? danger : warning,
-                foregroundColor: Colors.white,
-              ),
-              child: Text(action),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed == true) {
-      setState(() {
-        rider['status'] = newStatus;
-
-        rider['logs'].insert(
-          0,
-          'Account ${newStatus.toLowerCase()} by administrator. Reason: ${reasonController.text.trim()}',
-        );
-      });
-
-      setModalState(() {});
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text('${rider['name']} is now $newStatus.'),
-          ),
-        );
-      }
-    }
-
-    reasonController.dispose();
   }
 }
